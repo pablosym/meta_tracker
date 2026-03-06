@@ -1,0 +1,297 @@
+﻿@model Tracker.DTOs.EnvioDTO
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    ViewData["Title"] = "Trasmitir Envio";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+<script src="~/js/choferAutoComplete.js" asp-append-version="true"></script>
+<script src="~/js/vehiculoAutoComplete.js" asp-append-version="true"></script>
+
+<section class="content-header">
+
+
+    <div class="modal fade" id="modalAlta" style="display: none;" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="modalTitulo">   </h4>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="divRenderCreatePartial"></div>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <form id="formEnvio" asp-controller="Envios" asp-action="Create" method="post">
+
+        <input asp-for="EnvioId" type="hidden" />
+        <input asp-for="TransportistaCodigo" type="hidden" />
+        <input asp-for="VehiculoId" type="hidden" />
+        <input asp-for="VehiculoTipoId" type="hidden" />
+        <input asp-for="ChoferId" type="hidden" />
+
+        <div class="col-md-12">
+            <div class="card card-primary card-outline">
+                <div class="card-header">
+                    <b>Envios a Trasmitir</b> <small> Filtros Disponibles</small>
+
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body ">
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-success"><i class="fas fa-archive"></i></span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label asp-for="Numero" class="control-label"></label>
+                                            <input asp-for="Numero" class="form-control" readonly required />
+                                            <span asp-validation-for="Numero" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaInicio" class="control-label"></label>
+                                            <input asp-for="FechaInicio" type="datetime-local" class="form-control" />
+                                            <span asp-validation-for="FechaInicio" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaTurno" class="control-label"></label>
+                                            <input asp-for="FechaTurno" type="datetime-local" class="form-control" />
+                                            <span asp-validation-for="FechaTurno" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Observaciones" class="control-label"></label>
+                                            <input asp-for="Observaciones" spellcheck="true" class="form-control" />
+                                            <span asp-validation-for="Observaciones" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-warning"> <i class="fas fa-people-carry"></i> </span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Transportista" class="control-label"></label>
+                                            <input asp-for="Transportista" class="form-control" />
+                                            <span asp-validation-for="Transportista" class="text-danger"></span>
+                                        </div>
+                                         <div class="col-md-2  col-xs-12">
+                                            <label class="control-label">DNI</label>
+                                            <input id="ChoferDNI" class="form-control" required />
+                                        </div>
+
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Chofer" class="control-label"></label>
+                                            <input asp-for="Chofer" class="form-control" required />
+                                            <span asp-validation-for="Chofer" class="text-danger"></span>
+                                        </div>
+
+                                       
+                                        
+                                        <div class="col-md-1  col-xs-12">
+                                            <br />
+                                            <button id="btnChofer" type="button" class="mt-2 btn btn-success" title="Crear "> <i class="far fa-save"></i>  </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-warning"> <i class="fas fa-truck-moving"></i></span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+
+                                         <div class="col-md-2">
+                                            <label asp-for="Patente" class="control-label"></label>
+                                            <input asp-for="Patente" id="Patente" class="form-control"  required />
+                                            <span asp-validation-for="Patente" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-4">
+                                            <label asp-for="Vehiculo" class="control-label"></label>
+                                            <input asp-for="Vehiculo" class="form-control" readonly required />
+                                            <span asp-validation-for="Vehiculo" class="text-danger"></span>
+                                        </div>
+
+                                       
+                                        <div class="col-md-3">
+                                            <label asp-for="VehiculoTipo" class="control-label"></label>
+                                            <input asp-for="VehiculoTipo" class="form-control" readonly required />
+                                            <span asp-validation-for="VehiculoTipo" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-1  col-xs-12">
+                                            <br />
+                                            <button id="btnVehiculo" type="button" class="mt-2 btn btn-success" title="Crear "> <i class="far fa-save"></i>  </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="card-footer ">
+                        <div class="float-left">
+                            <button class="btn btn-warning @(Model.EnvioId == null ? "d-none" : "")" id="btnSincronizar"
+                                    data-envio-id="@Model.EnvioId">
+                                <i class="fas fa-satellite"></i> Sincronizar
+                            </button>
+
+                        </div>
+                        <div class="float-right">
+                            <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+
+</section>
+
+
+
+<script type="text/javascript">
+
+    ChoferesInit(@Json.Serialize(@tokenSet));
+    VehiculoInit(@Json.Serialize(@tokenSet));
+
+    //evento desde el popup
+    function choferGrabado(choferBBDD) {
+
+        var chofer = JSON.parse(choferBBDD);
+
+        $('#Chofer').val(chofer.razonSocial);
+        $('#ChoferId').val(chofer.id);
+        $('#modalAlta').modal('hide');
+    }
+
+    //evento desde el popup
+    function vehiculoGrabado(vehiculoBBDD) {
+
+        $('#modalAlta').modal('hide');
+
+        var vehiculo = JSON.parse(vehiculoBBDD);
+
+        $('#Vehiculo').val(vehiculo.descripcion);
+        $('#VehiculoId').val(vehiculo.id);
+        $('#VehiculoTipo').val(vehiculo.tipo.descripcion);
+        $('#VehiculoTipoId').val(vehiculo.tipoId);
+        $('#Patente').val(vehiculo.patente);
+    }
+
+
+    $(document).ready(function () {
+
+        $("#btnChofer").click(function (e) {
+            e.preventDefault();
+
+            $('#modalTitulo').html("Alta de Chofer");
+            $('#divRenderCreatePartial').load('@Url.Action("CreatePartial","Choferes")');
+            $('#modalAlta').modal('show');
+        });
+
+        $("#btnVehiculo").click(function (e) {
+            e.preventDefault();
+
+            $('#modalTitulo').html("Alta de Vehículo");
+            $('#divRenderCreatePartial').load('@Url.Action("CreatePartial","Vehiculos")');
+            $('#modalAlta').modal('show');
+        });
+
+         $('#btnSincronizar').on('click', function (e) {
+            e.preventDefault();
+            var $btn = $(this);
+            var envioId = $btn.data('envio-id');
+
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+
+            $.ajax({
+                url: '@Url.Action("Sincronizar")',
+                method: 'POST',
+                data: { envioId: envioId },
+                success: function (result) {
+                    viewMessage(result);
+                },
+                
+                complete: function () {
+                    $btn.prop('disabled', false).html('<i class="fas fa-satellite"></i> Sincronizar');
+                }
+            });
+        });
+
+
+        $('#formEnvio').on('submit', function (e) {
+            e.preventDefault();
+
+            var $form = $(this);
+            if (!$form.valid()) return;
+
+            var formData = $form.serialize();
+            var $btnSubmit = $form.find('button[type=submit]');
+            $btnSubmit.prop('disabled', true).html('<i class="fas fa-sync-alt fa-spin"></i> Guardando...');
+
+            $.ajax({
+                url: $form.attr('action'),
+                method: 'POST',
+                data: formData,
+                success: function (result) {
+                    viewMessage(result); 
+                     
+                    if (result.isOk) {
+                            // Asignar el nuevo ID al hidden input
+                            $('#EnvioId').val(result.tagId);
+
+                           $('#btnSincronizar')
+                            .attr('data-envio-id', result.tagId)
+                            .removeClass('d-none')
+                            .fadeIn();
+                        }
+
+                },
+                error: function () {
+                    viewMessage({ status: "ERROR", value: "Error al guardar el envío." });
+                },
+                complete: function () {
+                    $btnSubmit.prop('disabled', false).html('<i class="far fa-save"></i> Guardar');
+                }
+            });
+    });
+
+
+    });
+</script>
+

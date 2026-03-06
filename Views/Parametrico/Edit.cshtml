@@ -1,0 +1,74 @@
+﻿@model Tracker.DTOs.ParametricoDTO
+@{
+    ViewData["Title"] = "Create";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<section class="content-header">
+    <div class="col-md-12">
+        <div class="card card-warning card-outline">
+            <div class="card-header">
+                <b>Modificacion Parámetros </b> <small> @Model.Descripcion</small>
+
+                <div class="card-tools">
+                    <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                    <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body ">
+                <form asp-action="Edit" onsubmit="disableButtonOnSubmit(this)">
+                    <input asp-for="Id" type="hidden" class="form-control" />
+
+                    <div asp-validation-summary="All" class="text-danger"></div>
+                    <div class="row">
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="ParametricosHeaderId" class="control-label"></label>
+
+                            <select asp-for="ParametricosHeaderId" class="form-control" asp-items="ViewBag.IdTablaLookup" autofocus required>
+                                <option value="-1"> (Seleccione un Item)</option>
+                            </select>
+                            <span asp-validation-for="ParametricosHeaderId" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <div class="row">
+
+                        <div class="form-group col-md-3 col-xs-12 ">
+                            <label asp-for="Codigo" class="control-label"></label>
+                            <input asp-for="Codigo" class="form-control" />
+                            <span asp-validation-for="Codigo" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-5 col-xs-12 ">
+                            <label asp-for="Descripcion" class="control-label"></label>
+                            <input asp-for="Descripcion" class="form-control" spellcheck="true" />
+                            <span asp-validation-for="Descripcion" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-2  col-xs-12">
+                            <label asp-for="Orden" class="control-label"></label>
+                            <input asp-for="Orden" class="form-control" />
+                            <span asp-validation-for="Orden" class="text-danger"></span>
+                        </div>
+                        @*   <div class="form-group col-md-2  col-xs-12">
+                            <label asp-for="Color" class="control-label"></label>
+                            <input type="color" asp-for="Color" class="form-control" />
+                            <span asp-validation-for="Color" class="text-danger"></span>
+                        </div> *@
+                    </div>
+                    <div class="card-footer ">
+                        <div class="float-left">
+                            <input asp-for="Baja" type="checkbox" title="Dar de baja">
+                            <label asp-for="Baja" class="control-label"></label>
+                        </div>
+                        <div class="float-right">
+                            <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+</section>

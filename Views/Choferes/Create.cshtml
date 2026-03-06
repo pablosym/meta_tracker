@@ -1,0 +1,7 @@
+﻿@model Tracker.DTOs.ChoferDTO
+@{
+    ViewData["Title"] = "Crear Chofer";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+@await Html.PartialAsync("CreatePartial", @Model ?? null)

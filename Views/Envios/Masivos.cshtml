@@ -1,0 +1,401 @@
+﻿@model Tracker.DTOs.EnvioDTO
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    ViewData["Title"] = "Pre visualizacion";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+<section class="content-header">
+    <div class="row">
+
+        <input asp-for="ChoferId" type="hidden" />
+        <input asp-for="VehiculoId" type="hidden" />
+        <input asp-for="VehiculoTipoId" type="hidden" />
+        <input asp-for="TransportistaDestinoCodigo" class="TransportistaDestinoCodigo" type="hidden" />
+        
+        <div class="col-md-12">
+            <div class="card card-primary card-outline">
+                <div class="card-header">
+                    <b>Envios a Trasmitir</b>
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body ">
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-success"><i class="fas fa-archive"></i></span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaInicio" class="control-label"></label>
+                                            <input asp-for="FechaInicio" type="date" class="form-control" readonly />
+                                            <span asp-validation-for="FechaInicio" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaTurno" class="control-label"></label>
+                                            <input asp-for="FechaTurno" type="date" class="form-control" readonly />
+                                            <span asp-validation-for="FechaTurno" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Observaciones" class="control-label"></label>
+                                            <input asp-for="Observaciones" spellcheck="true" class="form-control" readonly />
+                                            <span asp-validation-for="Observaciones" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-warning"> <i class="fas fa-truck-moving"></i></span>
+                                <div class="info-box-content">
+                                    <div class="row">
+                                        <div class="col-md-1 col-xs-12">
+                                            <label class="control-label">DNI</label>
+                                            <input id="ChoferDNI" class="form-control" required autofocus />
+                                        </div>
+                                        <div class="col-md-3  col-xs-12">
+                                            <label asp-for="Chofer" class="control-label"></label>
+                                            <input asp-for="Chofer" class="form-control" />
+                                            <span asp-validation-for="Chofer" class="text-danger"></span>
+                                        </div>
+                                      
+                                        <div class="col-md-2 col-xs-12">
+                                            <label asp-for="Patente" class="control-label"></label>
+                                            <input asp-for="Patente" class="form-control" required />
+                                            <span asp-validation-for="Patente" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3 col-xs-12">
+                                            <label asp-for="Vehiculo" class="control-label"></label>
+                                            <input asp-for="Vehiculo" class="form-control" required readonly />
+                                            <span asp-validation-for="Vehiculo" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3 col-xs-12">
+                                            <label asp-for="VehiculoTipo" class="control-label"></label>
+                                            <input asp-for="VehiculoTipo" class="form-control" required readonly />
+                                            <span asp-validation-for="VehiculoTipo" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12">
+            <div class="card card-primary card-outline">
+                <div class="card-header">
+                    <b>Carga de Envios </b>
+                </div>
+                <div class="card-body ">
+                    <form id="frmBuscar" class="form-horizontal">
+                        <div class="row">
+                            <div class="form-group col-md-6 row">
+                                <label asp-for="TransportistaDestino" class="col-sm-2 col-form-label">Transportista:</label>
+                                <div class="col-sm-10">
+                                    
+                                    <div class="input-group">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text"><i class="fas fa-store text-orange"></i></span>
+                                        </div>
+                                        <input asp-for="TransportistaDestino" class="TransportistaDestino form-control" placeholder="Puede cambiar el transportista si lo desea" />
+                                    </div>
+                                    
+                                    <em class="TransportistaDestinoDireccion"></em>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group col-md-6 row">
+                                <label for="txtEnvio" class="col-sm-2 col-form-label">Envio:</label>
+                                <div class="col-sm-10">
+                                    <div class="input-group">
+                                        <input id="txtEnvio" type="number" min="0" class="form-control" placeholder="Ingrese el número de envío" aria-label="Ingrese el número de envío" required>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-outline-success" type="submit" id="btnBuscar" data-text="<i class='fas fa-search'></i> Buscar"><i class="fas fa-search"></i> Buscar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="row">
+                        <div class="col-md-12">
+                            <table class="table table-hover table-sm text-nowrap w-100" id="tabla"></table>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer ">
+                    <div class="float-left">
+                        <i class="far fa-lightbulb text-yellow"></i> Las guías ingresadas se actualizarán automáticamente con la dirección del transportista seleccionado.
+                    </div>
+                    <div class="float-right">
+                        <button type="button" id="btnSincronizar" class="btn btn-warning" data-text="<i class='fas fa-satellite'></i> Sincronizar"> <i class="fas fa-satellite"></i> Sincronizar </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="~/js/choferAutoComplete.js " asp-append-version="true"></script>
+<script src="~/js/vehiculoAutoComplete.js" asp-append-version="true"></script>
+<script src="~/js/envioTablaExtend.js" asp-append-version="true"></script>
+<script src="~/js/transportistaAutoComplete.js" asp-append-version="true"></script>
+
+<script type="text/javascript">
+    
+    $(document).ready(function () {
+
+        var dataSet = [];
+
+        EnvioTablaInit(@Json.Serialize(@tokenSet), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Pendiente), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.ConError) );
+        ChoferesInit(@Json.Serialize(@tokenSet));
+        VehiculoInit(@Json.Serialize(@tokenSet));
+        TransportistaAutoCompleteInit(@Json.Serialize(@tokenSet));
+
+        createTable();
+
+        $("#btnSincronizar").click(function (e) {
+            e.preventDefault();
+            
+            if (dataSet.length  <= 0) {
+                toastr.warning("Debe tener algun envio para poder sincronizar.");
+                return;
+            }
+            
+            var send = @Html.Raw(Json.Serialize( @Model));
+
+            send.listEnvios = dataSet;
+            send.choferId = $('#ChoferId').val();
+            send.vehiculoId = $('#VehiculoId').val();
+            send.vehiculoTipoId = $('#VehiculoTipoId').val();
+            
+            if (send.choferId === "")
+            {
+                toastr.warning("El Chofer es un dato obligatorio");
+                return;
+            }
+
+            if (send.vehiculoId === "") {
+                toastr.warning("El Vehiculo es un dato obligatorio");
+                return;
+            }
+
+            for (var i = 0; i < send.listEnvios.length; i++) {
+                send.listEnvios[i].choferId =  $('#ChoferId').val();
+                send.listEnvios[i].vehiculoId =  $('#VehiculoId').val();
+                send.listEnvios[i].vehiculoTipoId = $('#VehiculoTipoId').val();
+                send.listEnvios[i].fechaInicio = $('#FechaInicio').val();
+                send.listEnvios[i].fechaTurno = $('#FechaTurno').val();
+            }
+
+            var boton = $('#btnSincronizar');
+
+            disableButtonOnClick(boton);
+
+            $.ajax({
+                type: "POST",
+                url: '@Url.Action("SendMasivos")',
+                dataType: "json",
+                headers: {
+                    '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                },
+                data: send,
+
+                success: function (data) {
+
+                    enabledButtonOnClick(boton);
+
+                    if (data.status === 0 || data.status === "OK") {
+
+                        dataSet = [];
+                        createTable();
+
+                        resetChofer();
+                        resetVehiculo();
+                        resetTransportista();
+                    }
+                    else {
+                        viewMessage(data);
+                    }
+
+                },
+                error: function (e) {
+                    enabledButtonOnClick(boton);
+                    toastr.error(e.responseText);
+                }
+            });
+        });
+
+
+        $("#frmBuscar").submit(function (e) {
+            e.preventDefault();
+
+            var boton = $('#btnBuscar');
+
+            disableButtonOnClick(boton);
+
+            var envio = parseInt($('#txtEnvio').val());
+
+            $('#txtEnvio').val('').focus();
+
+            var filtro = {
+                numero: envio,
+                transportistaDestinoCodigo: $('#TransportistaDestinoCodigo').val()
+            };
+            
+
+            $.ajax({
+                type: "POST",
+                url: '@Url.Action("GetEnvio")',
+                dataType: "json",
+                headers: {
+                    '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                },
+                data: { filtroDTO: filtro },
+                success: function (data) {
+                    
+                    enabledButtonOnClick(boton);
+
+                    if (data === undefined) {
+                        toastr.warning("No se encontró el Nº de Envio");
+                    }
+                    else {
+
+                        
+                    if (data.estadoId === @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Correcto)){
+                        toastr.warning("Envio SINCRONIZADO el dia <br/>" + moment(data.fechaUltimoMov).format("DD/MM/YYYY HH:MM" ));
+                        return;
+                    }
+                        var existe = dataSet.find(x => x.numero === envio);
+
+                        if (existe !== undefined) {
+                            toastr.warning("El Envio ya esta Ingresado");
+                        }
+                        else {
+                            dataSet.unshift(data);
+                        }
+
+                        createTable();
+                    }
+                },
+                error: function (e) {
+                    enabledButtonOnClick(boton);
+                    toastr.error(e.responseText);
+                }
+            });
+        });
+
+
+        function createTable() {
+            $("#tabla").DataTable({
+                destroy: true,
+                processing: true,
+                serverSide: false,
+                deferRender: true,
+                responsive: true,
+                paging: false,
+                lengthChange: false,
+                searching: false,
+                ordering: false,
+                info: false,
+                scrollY: "230px",
+                scrollCollapse: true,
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'collection',
+                        autoClose: 'true',
+                        text: '',
+                        tag: 'span',
+                        buttons: [
+                            { extend: 'excel', text: 'Excel', filename: 'Export_' + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'pdf', text: 'PDF', filename: 'Export_' + "'" + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'colvis', text: 'Columnas Ver / Ocultar' }
+                        ]
+                    }
+                ],
+
+                data: dataSet,
+
+                columns: [
+                    { data: null, title: "", className: 'expand', orderable: false, defaultContent: '<i class="fas fa-plus-square text-green"></i>', width: 2 },
+                    { data: "numero", title: "Numero", name: "numero", defaultContent: "" },
+                    {
+                        data: null, title: "Transportista", name: "transportista", defaultContent: "",
+                        render: function (data, row) {
+
+                            if (data.transportistaCodigo === null || data.transportista === null)
+                                return "<small>NO SE ENCUENTRA EL TRANSPORTISTA </small>"
+                            return '<b>' + data.transportistaCodigo + '</b> ' + data.transportista;
+                        }
+                    },
+                    {
+                        data: null, title: "Transportista Destino", name: "transportistaDestino", defaultContent: "",
+                        render: function (data, row) {
+                            if (data.transportistaDestinoCodigo === null)
+                                return "";
+
+                            return '<b>' + data.transportistaDestinoCodigo + '</b> ' + data.transportistaDestino;
+                        }
+                    },
+                    { data: "cantidadGuias", title: "Cantidad Guias", name: "cantidadGuias", defaultContent: "0" },
+                    { data: "estado", title: "Estado", name: "estado", defaultContent: "" }, 
+                    { data: null, title: "", render: function (data, type, row) {
+                            return '<i class="fas fa-trash-alt delete-row text-red" data-id="' + data.Id + '"></i>';
+                        }
+                    }
+                ],
+
+                createdRow: function (row, data) {
+                    if (data.estadoColor !== '') {
+                        $(row.cells).each(function () {
+                            var color = "'" + data.estadoColor + "'";
+                            $(this).css("color", color);
+                        });
+                    }
+                },
+                language: {
+                    url: '@Url.Content("~/plugins/datatables/idioma.json")'
+                }
+            })
+        }
+
+        $('#tabla tbody').on('click', 'i.delete-row', function () {
+            var id = $(this).data('id');
+            var row = $(this).closest('tr');
+            var table = $('#tabla').DataTable();
+
+            // Recupera los datos de la fila en la que se hizo clic.
+            var rowData = table.row(row).data();
+
+            // Recupera el valor de la columna "envio" en esa fila.
+            var numero= rowData.numero;
+
+            // Luego, elimina la fila del DataTable.
+            table.row(row).remove().draw(false);
+
+            // Elimina el elemento correspondiente del dataSet.
+            var index = dataSet.findIndex(function (item) {
+                return item.numero === numero;
+            });
+
+            if (index !== -1) {
+                dataSet.splice(index, 1);
+            }
+        });
+    });
+</script>

@@ -1,0 +1,153 @@
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    ViewData["Title"] = "Auditoría de Teléfonos Resueltos";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+<link rel="stylesheet" href="~/plugins/daterangepicker/daterangepicker.css" asp-append-version="true" />
+<script src="~/plugins/daterangepicker/daterangepicker.js" asp-append-version="true"></script>
+
+<section class="content-header">
+    <div class="row">
+        <div class="col-md-12">
+            <form id="frmBuscar">
+                <div class="card card-info card-outline">
+                    <div class="card-header">
+                        <b>Auditoría de Teléfonos</b> <small> Filtros Disponibles</small>
+                        <div class="card-tools">
+                            <a class="btn btn-tool" asp-controller="Home" asp-action="Index" title="Inicio"><i class="nav-icon fas fa-home"></i></a>
+                            <a class="btn btn-tool" onclick="history.go(-1); return false;" title="Atrás"><i class="fas fa-arrow-alt-circle-left"></i></a>
+                            <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="form-group col-md-3">
+                                <label>Fecha</label>
+                                <div class="input-group">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="far fa-clock"></i></span>
+                                    </div>
+                                    <input type="text" class="form-control" id="dteFecha">
+                                </div>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label>Usuario</label>
+                                <input type="text" class="form-control" id="txtUsuario" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="card-footer text-right col-12">
+                                <button id="btnBuscar" type="submit" class="btn btn-outline-success btn-sm"><i class="fas fa-search"></i> Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-md-12">
+            <div class="card card-gray card-outline shadow">
+                <div class="card-body table-responsive p-0">
+                    <table class="table table-hover table-sm text-nowrap w-100" id="tablaAuditoria"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+
+        let botonBuscar = $('#btnBuscar');
+
+
+        $('#dteFecha').daterangepicker({
+            locale: {
+                format: 'DD/MM/YYYY'
+            }
+        });
+
+        var tabla = $('#tablaAuditoria').DataTable({
+                processing: true,
+                serverSide: true,
+                deferRender: true,
+                responsive: true,
+                paging: true,
+                lengthChange: true,
+                searching: true,
+                ordering: true,
+                info: true,
+                lengthMenu: [10, 25, 50, 100, 200, 500, 1000],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'collection',
+                        autoClose: 'true',
+                        text: '',
+                        tag: 'span',
+                        buttons: [
+                            { extend: 'excel', text: 'Excel', filename: 'Export_' + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'pdf', text: 'PDF', filename: 'Export_' + "'" + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'colvis', text: 'Columnas Ver / Ocultar' }
+                        ]
+                    }
+                ],
+               ajax: {
+                    url: '@Url.Action("GetIndex")',
+                    type: "POST",
+                    data: function (d) {
+                        const fechas = $('#dteFecha').val().split(' - ');
+                        d.param = JSON.stringify({
+                            usuario: $('#txtUsuario').val(),
+                            desde: moment(fechas[0], 'DD/MM/YYYY').toISOString(),
+                            hasta: moment(fechas[1], 'DD/MM/YYYY').toISOString()
+                        });
+                        return d;
+                    },
+                    dataSrc: function (resp) {
+                        enabledButtonOnClick(botonBuscar);
+                        return resp.data;
+                    },
+                    error: function handleAjaxError(xhr, textStatus, error) {
+                        enabledButtonOnClick(botonBuscar);
+                        $(".dataTables_processing").hide();
+                    }
+                },
+
+                columns: [
+                    { data: "numGuia", name: "numGuia", title: "N° Guía" },
+                    { data: "cliente", name: "cliente", title: "Cliente" },
+                    { data: "afiliado", name: "afiliado", title: "Codigo Afiliado" },
+                    { data: "nombreAfiliado", name: "nombreAfiliado", title: "Nombre Afiliado" },
+                    { data: "listapre", name: "listapre", title: "Listapre" },
+                    // { data: "telefonoEstado", name: "telefonoEstado", title: "Estado" },
+                    // { data: "telefonoDomicili", name: "telefonoDomicili", title: "Tel. DOMICILI" },
+                    // { data: "telefonoAfiliado", name: "telefonoAfiliado", title: "Tel. AFILIADO" },
+                    { data: "usuarioRegistra", name: "usuarioRegistra", title: "Usuario" },
+                    { data: "fechaRegistro", name: "fechaRegistro", title: "Fecha",
+                      render: function (data) {
+                          return moment(data).format("DD/MM/YYYY HH:mm");
+                      }
+                    }
+                ],
+
+             language: {
+                    url: '@Url.Content("~/plugins/datatables/idioma.json")'
+                }
+        });
+
+        $('#frmBuscar').submit(function (e) {
+            e.preventDefault();
+            disableButtonOnClick(botonBuscar);
+             //De esta forma no hace postback, funciona con el boton nada mas.
+            $("#tablaAuditoria").DataTable().clear();
+            $("#tablaAuditoria").DataTable().draw();
+
+        });
+    });
+
+</script>

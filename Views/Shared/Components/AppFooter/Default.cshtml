@@ -1,0 +1,35 @@
+﻿<footer class="main-footer d-flex align-items-center justify-content-between">
+
+    <!-- Izquierda -->
+    <div class="d-flex align-items-center">
+        <img src="~/img/logoTransparente.png"
+             alt="META"
+             style="height:32px"
+             class="mr-2" />
+
+        <div class="text-sm">
+            <strong>
+                &copy; 2021–@DateTime.Now.Year META
+            </strong>
+            <div class="text-muted">
+                Industria Argentina 🇦🇷
+            </div>
+        </div>
+    </div>
+
+    <!-- Derecha -->
+    <div class="text-sm">
+        <span class="badge badge-secondary mr-1">
+            v @ViewBag.Version
+        </span>
+
+        <span class="badge badge-@(
+              ViewBag.Environment == "PRODUCTION" ? "info" :
+              ViewBag.Environment == "QA" ? "warning" :
+              "danger"
+                      )">
+            @ViewBag.Environment
+        </span>
+    </div>
+
+</footer>

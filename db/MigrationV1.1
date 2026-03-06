@@ -1,0 +1,129 @@
+BEGIN TRANSACTION;
+GO
+
+ALTER TABLE [Envios] ADD [TransportistaDestinoCodigo] decimal(18,2) NULL;
+GO
+
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20230823174529_EnvioTransportistaDestino', N'7.0.10');
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+ALTER TABLE [EnviosAudit] ADD [Direccion] nvarchar(max) NULL;
+GO
+
+CREATE TABLE [Transportistas] (
+    [Id] int NOT NULL IDENTITY,
+    [Codigo] decimal(18,2) NOT NULL,
+    [Nombre] nvarchar(max) NOT NULL,
+    [Direccion] nvarchar(max) NOT NULL,
+    [EstadoId] int NOT NULL,
+    CONSTRAINT [PK_Transportistas] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_Transportistas_Parametricos_EstadoId] FOREIGN KEY ([EstadoId]) REFERENCES [Parametricos] ([Id]) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX [IX_Transportistas_EstadoId] ON [Transportistas] ([EstadoId]);
+GO
+
+CREATE OR ALTER VIEW [dbo].[vwTransportistas] 
+AS
+	SELECT IDPROVLOGI, tl.CODIGO, tl.CODOPERA, tl.NOMBRE, ACTIVO, t.Direccion, t.EstadoId
+	FROM Presea_MAS_Migracion.dbo.PROVLOGI tl
+		LEFT JOIN Transportistas t on t.Codigo =tl.CODIGO 
+
+GO
+
+set identity_insert Menues on
+INSERT INTO dbo.menues (Id ,MenuPadreId ,Item ,AspController ,AspAction ,Icono ,Orden ,Baja ,AccesoDirecto ) VALUES (  16  , 16  ,'Transportistas' ,'Transportistas' , NULL  ,'fas fa-truck-pickup' , 40  ,  0, 0  ) 
+INSERT INTO dbo.menues (Id ,MenuPadreId ,Item ,AspController ,AspAction ,Icono ,Orden ,Baja ,AccesoDirecto ) VALUES (  17  , 16  ,'Listado Transportistas' ,'Transportistas' ,'index' ,'fas fa-list-ul' , 40  , 0  , 0  ) 
+set identity_insert Menues off
+GO
+
+
+
+INSERT INTO dbo.Parametricos (Codigo ,Descripcion ,Valor ,Orden ,Baja ,Color ,ParametricosHeaderId ) VALUES ( 'Transportista Estado' ,'Deshabilitado' , NULL  , 70  , 0  ,'#a91a10' , 6  ) 
+INSERT INTO dbo.Parametricos (Codigo ,Descripcion ,Valor ,Orden ,Baja ,Color ,ParametricosHeaderId ) VALUES ( 'Transportista Estado' ,'Activo' , NULL  , 60  , 0  , NULL  , 6  )
+GO
+
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20230829182948_TransportistasDestinoDireccion', N'7.0.10');
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+ALTER TABLE [Transportistas] ADD [Coordenadas] nvarchar(max) NULL;
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[EnviosGet] 
+@desde date = null,
+@hasta date = null, 
+@numero bigint = 0, 
+@guiaNumero bigint = 0, 
+@estado int = null,
+@pageSize int = 10,
+@skip int = 0
+as
+	
+	SELECT 
+		e.NUMENVIO as Numero, 
+		t.Codigo as TransportistaCodigo, t.Nombre as Transportista, 
+		co.ApellidoNombre as Chofer, co.Id as ChoferId,
+		v.Id as VehiculoId, v.Patente, v.Descripcion as Vehiculo,  tipoVehiculo.id as VehiculoTipoId,  tipoVehiculo.Descripcion as VehiculoTipo,
+		deEstado.Descripcion as Estado, deEstado.Color as EstadoColor, deEstado.id as EstadoId,
+		de.Id as EnvioId, de.Observaciones, de.FechaInicio, de.FechaTurno, de.FechaUltimoMov, 
+		(select count(*) from dbo.vwGuias where NumeroEnvio = e.NUMENVIO) as CantidadGuias,
+		de.TransportistaDestinoCodigo, tDestino.Nombre as TransportistaDestino,
+		RecordsTotal = COUNT(*) OVER(), --para el paginador
+		ROW_NUMBER() OVER(ORDER BY e.NUMENVIO ASC) AS Id -- esto es porque lo necesita el Entity Framework
+	FROM dbo.vwEnvios e
+		LEFT JOIN  dbo.vwGuias g on g.NumeroEnvio = e.NUMENVIO
+		LEFT JOIN  dbo.vwTransportistas t on t.codigo = g.PROVLOGI
+		LEFT JOIN  Envios de on de.Numero = e.NUMENVIO
+		LEFT JOIN  dbo.vwTransportistas tDestino on tDestino.CODIGO = de.TransportistaDestinoCodigo
+		LEFT JOIN  Vehiculos v on v.Id = de.VehiculoId
+		LEFT JOIN  Parametricos tipoVehiculo on tipoVehiculo.Id  = v.TipoId
+		LEFT JOIN  Parametricos deEstado on deEstado.id = de.EstadoId
+		LEFT JOIN  Choferes co on co.Id = de.ChoferId
+	WHERE   
+		 (( @desde is null) OR ( CAST(e.FECINGRE As Date) between @desde and @hasta))
+		and (( @numero =0 ) or ( e.NUMENVIO = @numero))
+		and (( @guiaNumero =0 ) or ( g.NumeroGuia = @guiaNumero))
+		and (( @estado is null or @estado = 0 ) or ( de.EstadoId = @estado))
+	
+	
+	GROUP BY e.NUMENVIO, t.codigo, t.nombre, co.Id, co.ApellidoNombre, 
+		     v.id, v.patente, v.Descripcion, tipoVehiculo.id, tipoVehiculo.Descripcion,
+			 deEstado.Descripcion, deEstado.Color, deEstado.id, 
+			 de.Id, de.Observaciones, de.FechaInicio, de.FechaTurno, de.FechaUltimoMov, 
+			 de.TransportistaDestinoCodigo, 
+			 tDestino.NOMBRE
+	ORDER BY  e.NUMENVIO desc, t.nombre
+	OFFSET @skip ROWS FETCH NEXT @pageSize ROWS ONLY
+
+GO
+
+CREATE OR ALTER VIEW [dbo].[vwTransportistas]
+AS
+	SELECT IDPROVLOGI, tl.CODIGO, tl.CODOPERA, tl.NOMBRE, ACTIVO, t.Direccion, t.EstadoId, t.Coordenadas
+	FROM Presea_MAS_Migracion.dbo.PROVLOGI tl
+		LEFT JOIN Transportistas t on t.Codigo =tl.CODIGO 
+
+GO
+
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20231004184540_TransportistasCoordenadas', N'7.0.10');
+GO
+
+COMMIT;
+GO
+

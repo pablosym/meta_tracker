@@ -1,0 +1,82 @@
+exec sp_executesql N'EXEC EnviosGet @desde = @p0, @hasta = @p1,
+                                                                        @numero = @p2, @estado = @p3,
+                                                                        @guiaNumero = @p4,
+                                                                        @pageSize =  @p5, @skip = @p6
+',N'@p0 nvarchar(4000),@p1 nvarchar(4000),@p2 bigint,@p3 nvarchar(4000),@p4 bigint,@p5 int,@p6 int',@p0=NULL,@p1=NULL,@p2=121074,@p3=NULL,@p4=0,@p5=2147483647,@p6=0
+
+
+
+EnviosGet
+Numero                          vwEnvios.NUMENVIO → Presea_Mas_Migracion.dbo.ENVIO.NUMENVIO
+TransportistaCodigo             vwTransportistas.CODIGO → Presea_MAS_Migracion.dbo.PROVLOGI.CODIGO
+Transportista                   Transportistas.Nombre
+Chofer                          Choferes.ApellidoNombre
+ChoferId                        Choferes.Id
+VehiculoId                      Vehiculos.Id
+Patente                         Vehiculos.Patente
+Vehiculo                        Vehiculos.Descripcion
+VehiculoTipoId                  Parametricos.Id
+VehiculoTipo                    Parametricos.Descripcion
+Estado                          Parametricos.Descripcion
+EstadoColor                     Parametricos.Color
+EstadoId                        Parametricos.Id
+EnvioId                         Envios.Id
+Observaciones                   Envios.Observaciones
+FechaInicio                     Envios.FechaInicio
+FechaTurno                      Envios.FechaTurno
+FechaUltimoMov                  Envios.FechaUltimoMov
+CantidadGuias                   vwGuias → Presea_Mas_Migracion.dbo.GUIA  (COUNT por NumeroEnvio)
+TransportistaDestinoCodigo      Envios.TransportistaDestinoCodigo
+TransportistaDestino            vwTransportistas.Nombre → Transportistas.Nombre
+RecordsTotal                    Calculado con COUNT(*) OVER()
+Id                              Calculado con ROW_NUMBER() OVER(ORDER BY e.NUMENVIO ASC)
+
+
+
+Vista vwGuias
+IDGUIA                    Presea_Mas_Migracion.dbo.GUIA.IDGUIA
+NumeroEnvio               Presea_Mas_Migracion.dbo.GUIA.NUMENVIO
+NumeroGuia                Presea_Mas_Migracion.dbo.GUIA.NUMGUIA
+FechaHora                 Presea_Mas_Migracion.dbo.GUIA.FECHAHORA
+FechaEnvio                Presea_Mas_Migracion.dbo.GUIA.FECHENVIO
+PROVLOGI                  Presea_Mas_Migracion.dbo.GUIA.PROVLOGI
+Operador                  Presea_Mas_Migracion.dbo.GUIA.OPERADOR
+OperadorEnvio             Presea_Mas_Migracion.dbo.GUIA.OPERENVIO
+ClienteCodigo             Presea_Mas_Migracion.dbo.CLIENTES.CODIGO
+Cliente                   Calculado (CASE entre CLIENTES.N_FANTASIA y CLIENTES.NOMBRE)
+ClienteDomicilio          Presea_Mas_Migracion.dbo.CLIENTES.DOMICILIO
+ClienteEmail              Presea_Mas_Migracion.dbo.CLIENTES.E_MAIL
+CantidadComprobantes      Presea_Mas_Migracion.dbo.CTACTE (COUNT(*) WHERE CTACTE.NUMGUIA = GUIA.NUMGUIA)
+
+                                
+
+vista vwEnvios
+IDENVIO             Presea_Mas_Migracion.dbo.ENVIO.IDENVIO
+NUMENVIO            Presea_Mas_Migracion.dbo.ENVIO.NUMENVIO
+EMPRESA             Presea_Mas_Migracion.dbo.ENVIO.EMPRESA
+OBSERVACIO          Presea_Mas_Migracion.dbo.ENVIO.OBSERVACIO
+FECINGRE            Presea_Mas_Migracion.dbo.ENVIO.FECINGRE
+
+
+vista vwTelefonosGuias
+
+NUMGUIA                 Presea_Mas_Migracion.dbo.CTACTE.NUMGUIA
+CLIENTE                 Presea_Mas_Migracion.dbo.CTACTE.CLIENTE
+AFILIADO                Presea_Mas_Migracion.dbo.CTACTE.AFILIADO
+LISTAPRE                Presea_Mas_Migracion.dbo.CTACTE.LISTAPRE
+TelefonoDomicili        Presea_Mas_Migracion.dbo.DOMICILI.TEL_CEL
+TelefonoAfiliado        Presea_Mas_Migracion.dbo.AFILIADO.CEL
+TelefonoEstado          Calculado (CASE: DOMICILI / AFILIADO / AFILIADO_MULTIPLES / SIN_TELEFONO)
+NombreAfiliado          Presea_Mas_Migracion.dbo.AFILIADO.NOMBRE
+
+vista vwTransportistas 
+
+IDPROVLOGI           Presea_MAS_Migracion.dbo.PROVLOGI.IDPROVLOGI
+CODIGO               Presea_MAS_Migracion.dbo.PROVLOGI.CODIGO
+CODOPERA             Presea_MAS_Migracion.dbo.PROVLOGI.CODOPERA
+NOMBRE               Presea_MAS_Migracion.dbo.PROVLOGI.NOMBRE
+ACTIVO               Presea_MAS_Migracion.dbo.PROVLOGI.ACTIVO
+Direccion            Transportistas.Direccion
+EstadoId             Transportistas.EstadoId
+Coordenadas          Transportistas.Coordenadas
+

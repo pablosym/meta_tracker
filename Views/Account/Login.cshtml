@@ -1,0 +1,7 @@
+﻿@model Tracker.DTOs.LoginDTO
+@{
+    ViewData["Title"] = "Login";
+    Layout = "~/Views/Shared/_Estilo.cshtml";
+}
+
+@await Html.PartialAsync("LoginPartial", Model)

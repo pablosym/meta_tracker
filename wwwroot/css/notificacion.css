@@ -1,0 +1,149 @@
+﻿#zonaNotificaciones {
+    max-height: 158px;
+    overflow-y: auto;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 600px;
+    padding: 10px;
+    display: none;
+}
+
+.noti-container {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1055;
+    width: 400px;
+    max-height: 350px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(6px);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    display: none;
+}
+
+.noti-header {
+    text-align: right;
+    margin-bottom: 5px;
+}
+
+    .noti-header button {
+        background-color: transparent;
+        border: none;
+        color: #555;
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+
+        .noti-header button:hover {
+            color: #dc3545;
+            text-decoration: underline;
+        }
+
+.noti-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f0f9ff;
+    border-left: 5px solid #17a2b8;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.1);
+    word-break: break-word;
+}
+
+.noti-close {
+    color: red;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    margin-left: 8px;
+    flex-shrink: 0;
+    align-self: flex-start; /* para alinearlo arriba si querés */
+}
+
+    .noti-card .trash {
+        color: red;
+        cursor: pointer;
+        font-size: 16px;
+        flex-shrink: 0;
+        margin-left: 10px;
+    }
+
+    .noti-card .noti-content {
+        flex-grow: 1;
+    }
+
+    .noti-card small {
+        color: gray;
+        font-size: 0.8rem;
+        display: block;
+        margin-top: 4px;
+    }
+
+    .noti-card.danger {
+        border-left-color: #dc3545;
+    }
+
+    .noti-card.warning {
+        border-left-color: #ffc107;
+    }
+
+    .noti-card.info {
+        border-left-color: #17a2b8;
+    }
+
+.noti-icon {
+    font-size: 1.4rem;
+    margin-right: 10px;
+    color: #007bff;
+}
+
+.noti-card.danger .noti-icon {
+    color: #dc3545;
+}
+
+.noti-card.warning .noti-icon {
+    color: #ffc107;
+}
+
+.noti-card.info .noti-icon {
+    color: #17a2b8;
+}
+
+.noti-content {
+    flex-grow: 1;
+}
+
+
+.noti-date {
+    font-size: 0.75rem;
+    color: #777;
+    margin-top: 2px;
+}
+
+.noti-header small {
+    font-size: 0.75rem;
+    color: #666;
+    flex-grow: 1;
+    padding-left: 5px;
+}
+
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}

@@ -1,0 +1,35 @@
+﻿
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+
+    <title>META - Tracker </title>
+    <link id="favicon" rel="icon" href="~/favicon.ico" type="image/png" sizes="16x16">
+
+    <partial name="AdminLTE/_Styles" />
+    <partial name="AdminLTE/_Scripts" />
+</head>
+
+
+<body class="sidebar-mini sidebar-collapse layout-fixed text-sm ">
+
+
+    <div class="wrapper">
+        <partial name="AdminLTE/_TopNavigation" />
+        <partial name="AdminLTE/_MainNavigation" />
+
+        <div class="content-wrapper">
+            <div class="content">
+                <div class="container-fluid">
+                    @RenderBody()
+
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

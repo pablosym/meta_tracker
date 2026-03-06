@@ -1,0 +1,62 @@
+﻿@model Tracker.DTOs.ClaveDTO
+@{
+    ViewData["Title"] = "Login";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<section class="content-header">
+    <div class="col-md-12">
+        <div class="card card-warning card-outline">
+            <div class="card-header">
+                <b>Modificacion Contraseña </b> <small> Ingrese sus datos para poder modificar su contraseña actual</small>
+
+                <div class="card-tools">
+                    <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                    <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body ">
+                <form asp-action="ClaveReset">
+
+                    <input asp-for="ClaveActual" type="hidden" />
+                    <input asp-for="UsuarioId" type="hidden" />
+
+
+                    <div class="col-md-4 col-sm-4 col-xs-12">
+                        <div class="info-box shadow-lg">
+                            <span class="info-box-icon bg-green"><i class="fas fa-key"></i></span>
+
+                            <div class="info-box-content">
+                                <span class="info-box-text"> <label>Clave Nueva</label></span>
+                                <input asp-for="ClaveNueva" class="form-control" autofocus required />
+                                <span asp-validation-for="ClaveNueva" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-4 col-xs-12">
+                        <div class="info-box shadow-lg">
+                            <span class="info-box-icon bg-green"><i class="fas fa-lock"></i></span>
+
+                            <div class="info-box-content">
+                                <span class="info-box-text"> <label>Clave Confirmacion</label></span>
+                                <input asp-for="ClaveConfirmacion" class="form-control" required />
+                                <span asp-validation-for="ClaveConfirmacion" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-footer ">
+                        <div class="float-right">
+                            <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                    
+                </form>
+            </div>
+        </div>
+    </div>
+</section>

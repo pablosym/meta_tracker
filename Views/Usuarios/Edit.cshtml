@@ -1,0 +1,74 @@
+﻿@model Tracker.DTOs.UsuarioDTO
+@{
+    ViewData["Title"] = "Create";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<section class="content-header">
+    <div class="col-md-12">
+        <div class="card card-warning card-outline">
+            <div class="card-header">
+                <b>Modificacion Parámetros </b> <small> @Model.Nombre</small>
+
+                <div class="card-tools">
+                    <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                    <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body ">
+                <form asp-action="Edit" onsubmit="disableButtonOnSubmit(this)">
+                    <input type="hidden" asp-for="Id" />
+                    <input type="hidden" asp-for="Password" />
+                    <input type="hidden" asp-for="ConfirmPassword" />
+                    <input type="hidden" asp-for="FlgAdmin" />
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label asp-for="Nombre"></label>
+                                <input asp-for="Nombre" class="form-control" autofocus autocomplete="off" />
+                                <span asp-validation-for="Nombre" class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label asp-for="Correo"></label>
+                                <input asp-for="Correo" class="form-control" autocomplete="off" />
+                                <span asp-validation-for="Correo" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label asp-for="IdRolesSel" class="control-label"></label>
+                                <select multiple size="5" asp-for="IdRolesSel" class="form-control" asp-items="ViewBag.IdRoles"></select>
+                                <span asp-validation-for="IdRolesSel" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-footer ">
+                        <div class="float-left">
+
+                            <div class="float-left">
+                                <input asp-for="Baja" type="checkbox" title="Dar de baja">
+                                <label asp-for="Baja" class="control-label"></label>
+                            </div>
+
+                        </div>
+                        <div class="float-right">
+                            <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+

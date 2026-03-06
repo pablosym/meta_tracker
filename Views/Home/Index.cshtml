@@ -1,0 +1,34 @@
+﻿@model Tracker.DTOs.LoginDTO
+@{
+    ViewData["Title"] = "Home Page";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+
+    var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
+    var basePath = Context?.Request?.PathBase.Value ?? "";
+}
+
+<section class="content">
+    <div class="container-fluid">
+
+        <div class="row pt-2">
+
+            <div class="col-md-12 text-center">
+                <h1 class="display-4">Bienvenidos</h1>
+                <img src="~/img/logoTransparente.png" class="img-fluid" />
+            </div>
+        </div>
+
+
+        @if (!isAuthenticated)
+        {
+            @await Html.PartialAsync("LoginPartial", Model)
+        }
+
+        @if (isAuthenticated)
+        {
+            <br />
+            @Html.Raw(Tracker.Helpers.Security.GetMenuAccesosDirectos(User, basePath))
+        }
+    </div>
+
+</section>

@@ -1,0 +1,236 @@
+﻿@model Tracker.DTOs.EnvioDTO
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    ViewData["Title"] = "Pre visualizacion";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+<section class="content-header">
+    <form asp-action="Sincronizar">
+
+        <input asp-for="Id" type="hidden" />
+        <input asp-for="EnvioId" type="hidden" />
+
+        <div class="col-md-12">
+            <div class="card card-primary card-outline">
+                <div class="card-header">
+                    <b>Envios a Trasmitir</b> <small> Filtros Disponibles</small>
+
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body ">
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-success"><i class="fas fa-archive"></i></span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label asp-for="Numero" class="control-label"></label>
+                                            <input asp-for="Numero" class="form-control" readonly required />
+                                            <span asp-validation-for="Numero" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaInicio" class="control-label"></label>
+                                            <input asp-for="FechaInicio" type="date" class="form-control" readonly  />
+                                            <span asp-validation-for="FechaInicio" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-2  col-xs-12">
+                                            <label asp-for="FechaTurno" class="control-label"></label>
+                                            <input asp-for="FechaTurno" type="date" class="form-control" readonly />
+                                            <span asp-validation-for="FechaTurno" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Observaciones" class="control-label"></label>
+                                            <input asp-for="Observaciones" spellcheck="true" class="form-control" readonly />
+                                            <span asp-validation-for="Observaciones" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-warning"> <i class="fas fa-people-carry"></i> </span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Transportista" class="control-label"></label>
+                                            <input asp-for="Transportista" class="form-control" readonly />
+                                            <span asp-validation-for="Transportista" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-4  col-xs-12">
+                                            <label asp-for="Chofer" class="control-label"></label>
+                                            <input asp-for="Chofer" class="form-control" readonly />
+                                            <span asp-validation-for="Chofer" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+
+                        <div class="col-md-12 col-sm-12 col-12">
+                            <div class="info-box shadow">
+                                <span class="info-box-icon bg-warning"> <i class="fas fa-truck-moving"></i></span>
+
+                                <div class="info-box-content">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label asp-for="Vehiculo" class="control-label"></label>
+                                            <input asp-for="Vehiculo" class="form-control" required readonly />
+                                            <span asp-validation-for="Vehiculo" class="text-danger"></span>
+                                        </div>
+
+                                        <div class="col-md-2">
+                                            <label asp-for="Patente" class="control-label"></label>
+                                            <input asp-for="Patente" class="form-control" readonly required />
+                                            <span asp-validation-for="Patente" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label asp-for="VehiculoTipo" class="control-label"></label>
+                                            <input asp-for="VehiculoTipo" class="form-control" readonly required />
+                                            <span asp-validation-for="VehiculoTipo" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="card-footer ">
+                        <div class="float-right">
+                            <button type="submit" action="PreView" value="Sincronizar" class="btn btn-warning"> <i class="fas fa-satellite"></i> Sincronizar </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+
+</section>
+
+
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+
+
+        $("#Chofer").change(function () {
+            if ($("#Chofer").val() === '')
+                $('#Chofer').val('');
+        });
+
+        $("#Chofer").autocomplete({
+            select: function (event, ui) {
+
+                $('#Chofer').val(ui.item.codigo);
+                $('#ChoferId').val(ui.item.id);
+
+            },
+            delay: 500,
+            minLength: 3,
+            source: function (request, response) {
+                $.ajax({
+                    type: "POST",
+                    url: '@Url.Action("AutoComplete", "Choferes")',
+                    dataType: "json",
+                    headers: {
+                        '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                    },
+                    data: { 'term': $("#Chofer").val() },
+                    success: function (data) {
+                        var obj = data.d || data;
+
+                        response($.map(obj, function (item) {
+
+                            return {
+
+                                label: item.label,
+                                value: item.label,
+                                id: item.id
+                            };
+                        }));
+
+                    },
+                    error: function (e) {
+                        console.log(e);
+                    }
+                });
+            }
+        });
+
+        $("#Vehiculo").change(function () {
+            if ($("#Vehiculo").val() === '')
+                $('#Vehiculo').val('');
+        });
+
+
+        $("#Vehiculo").autocomplete({
+            select: function (event, ui) {
+                $('#Vehiculo').val(ui.item.codigo);
+                $('#VehiculoId').val(ui.item.id);
+
+                var vehiculo = JSON.parse(ui.item.tagObj);
+
+                $('#Patente').val(vehiculo.Patente);
+                $('#Vehiculo').val(vehiculo.Descripcion);
+                $('#VehiculoTipo').val(vehiculo.Tipo.Descripcion);
+                $('#VehiculoTipoId').val(vehiculo.TipoId);
+
+
+            },
+            delay: 500,
+            minLength: 3,
+            source: function (request, response) {
+                $.ajax({
+                    type: "POST",
+                    url: '@Url.Action("AutoComplete", "Vehiculos")',
+                    dataType: "json",
+                    headers: {
+                        '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                    },
+                    data: { 'term': $("#Vehiculo").val() },
+                    success: function (data) {
+                        var obj = data.d || data;
+
+                        response($.map(obj, function (item) {
+
+                            return {
+
+                                label: item.label,
+                                value: item.label,
+                                id: item.id,
+                                tagObj: item.tagObj
+                            };
+                        }));
+
+                    },
+                    error: function (e) {
+                        console.log(e);
+                    }
+                });
+            }
+        });
+
+    });
+</script>
+

@@ -1,0 +1,35 @@
+﻿@{
+    var basePath = Context?.Request?.PathBase.Value ?? "";
+}
+<aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="~/Home" class="brand-link  bg-blue">
+        <img src="~/img/logoChico.jpg" alt="SUM" class="brand-image img-circle elevation-3" style="opacity: .8">
+        <span class="brand-text font-weight-light">META</span>
+    </a>
+
+    <div class="sidebar">
+
+        @if (!User?.Identity?.IsAuthenticated ?? false)
+        {
+            <div class="user-panel mt-3 pb-3 mb-3 d-flex">
+                <div class="info text-white-50">
+                    <cite>
+                        HOLA!!, <br />Te damos la Bienvenida <br /> para comenzar inicia sesion
+                    </cite>
+
+                    <a asp-controller="Account" asp-action="Login" class="text-white">AQUI</a>
+
+                </div>
+
+            </div>
+        }
+
+        <nav class="mt-2">
+            <nav class="mt-2">
+                <ul class="nav nav-pills nav-sidebar flex-column nav-collapse-hide-child text-sm nav-legacy nav-flat nav-child-indent" data-widget="treeview" role="menu" data-accordion="false">
+                    @Html.Raw(Tracker.Helpers.Security.GetMenu(User, basePath));
+                </ul>
+            </nav>
+        </nav>
+    </div>
+</aside>

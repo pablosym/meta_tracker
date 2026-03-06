@@ -1,0 +1,64 @@
+﻿@model Tracker.DTOs.MenuesRolDTO
+@{
+    ViewData["Title"] = "Edit";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<link rel="stylesheet" href="~/plugins/bootstrap4-duallistbox/bootstrap-duallistbox.min.css" asp-append-version="true" />
+<script src="~/plugins/bootstrap4-duallistbox/jquery.bootstrap-duallistbox.js" asp-append-version="true"></script>
+
+<section class="content-header">
+
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card card-outline card-primary ">
+                <div class="card-header">
+                    <b>Asignar Menues </b> <small> Filtros Disponibles</small>
+
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form asp-action="Guardar">
+                        <input type="hidden" asp-for="IdRol" />
+                        
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label asp-for="IdRol" class="control-label"></label>
+                                    <select asp-for="IdRol" class="form-control" asp-items="ViewBag.IdRol" disabled></select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label asp-for="listIdMenu" class="control-label"></label>
+                                    <select multiple size="10" asp-for="listIdMenu" class="form-control duallistbox" asp-items="ViewBag.MenuId"></select>
+                                    <span asp-validation-for="listIdMenu" class="text-danger"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer text-right">
+                            <button id="btnAceptar" type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('.duallistbox').bootstrapDualListbox()
+
+    });
+</script>

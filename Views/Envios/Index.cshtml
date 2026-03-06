@@ -1,0 +1,319 @@
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    ViewData["Title"] = "Listado de Envios";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+<link rel="stylesheet" href="~/plugins/daterangepicker/daterangepicker.css" asp-append-version="true" />
+<script src="~/plugins/daterangepicker/daterangepicker.js" asp-append-version="true"></script>
+
+<section class="content-header">
+    <div class="row">
+
+        <div class="col-md-12">
+            <form id="frmBuscar">
+                <div class="card card-primary card-outline">
+                    <div class="card-header">
+                        <b>Listado de Envios</b> <small> Filtros Disponibles</small>
+
+                        <div class="card-tools">
+                            <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                            <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                            <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body ">
+                        <div class="row">
+                            <div class="form-group col-md-3 col-xs-12">
+                                <label>Fecha</label>
+                                <div class="input-group">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="far fa-clock"></i></span>
+                                    </div>
+                                    <input type="text" class="form-control float-right" id="dteFecha">
+                                </div>
+                            </div>
+                            <div class="form-group col-md-2 col-xs-12">
+                                <label>Numero</label>
+                                <input type="number" class="form-control" id="txtNumero" min="0">
+                            </div>
+                            <div class="form-group col-md-2 col-xs-12">
+                                <label>Guia</label>
+                                <input type="number" class="form-control" id="txtGuia" min="0">
+                            </div>
+                            <div class="form-group col-md-3 col-xs-12">
+                                <label>Estado</label>
+                                <select id="cboEstadoId" class="form-control" asp-items="ViewBag.listEstados">
+                                    <option value="0"> (Todos)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class=" card-footer text-right col-12">
+                                <button id="btnBuscar" type="submit" class="btn btn-outline-success btn-sm"><i class="fas fa-search"></i> Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+
+        <div class="col-md-12 col-xs-12">
+            <div class="card card-gray card-outline shadow">
+                <div class="card-body table-responsive p-0">
+                    <table class="table table-hover table-sm text-nowrap w-100" id="tabla"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<script src="~/js/envioTablaExtend.js"></script>
+
+
+<script type="text/javascript">
+
+
+
+    $(document).ready(function () {
+
+        let botonBuscar = $('#btnBuscar');
+
+        EnvioTablaInit(@Json.Serialize(@tokenSet), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Pendiente), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.ConError) );
+
+        //Date range picker
+        $('#dteFecha').daterangepicker({
+            locale: {
+                cancelLabel: 'Cancelar',
+                applyLabel: 'OK',
+                format: 'DD/MM/YYYY'
+
+            },
+            //startView: "day",
+            //minViewMode: "day",
+            startDate: moment()
+        },
+
+            function (start, end) {
+                desde = start;
+                hasta = end;
+            }
+        );
+
+        createTable();
+
+        $("#frmBuscar").submit(function (e) {
+            e.preventDefault();
+            disableButtonOnClick(botonBuscar);
+
+            //De esta forma no hace postback, funciona con el boton nada mas.
+            $("#tabla").DataTable().clear();
+            $("#tabla").DataTable().draw();
+        })
+
+
+       $(document).on('click', '.btn-sincronizar-ajax', function (e) {
+        e.preventDefault();
+
+        var $btn = $(this);
+        var envioId = $btn.data('envio-id');
+        var originalIcon = $btn.html();
+
+        // Ícono de espera
+        $btn.html('<i class="fas fa-spinner fa-spin text-secondary"></i>');
+        $btn.addClass('disabled');
+
+        $.ajax({
+            url: '@Url.Action("Sincronizar")',
+            method: 'POST',
+            data: { envioId: envioId },
+            success: function (result) {
+                viewMessage(result);
+            },
+            error: function () {
+                viewMessage({ status: "ERROR", value: "Error al sincronizar el envío." });
+            },
+            complete: function () {
+                $btn.html(originalIcon);
+                $btn.removeClass('disabled');
+            }
+        });
+    });
+
+
+        function createTable() {
+            $("#tabla").DataTable({
+                destroy: true,
+                processing: true,
+                serverSide: true,
+                deferRender: true,
+                responsive: true,
+                paging: true,
+                lengthChange: true,
+                searching: false,
+                ordering: false,
+                info: true,
+                lengthMenu: [10, 25, 50, 100, 200, 500, 1000],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'collection',
+                        autoClose: 'true',
+                        text: '',
+                        tag: 'span',
+                        buttons: [
+                            { extend: 'excel', text: 'Excel', filename: 'Export_' + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'pdf', text: 'PDF', filename: 'Export_' + "'" + '@Html.Raw(ViewData["Title"])' },
+                            { extend: 'colvis', text: 'Columnas Ver / Ocultar' }
+                        ]
+                    }
+                ],
+
+                ajax: {
+                    url: '@Url.Action("GetIndex")',
+                    type: "POST",
+                    datatype: "json",
+                    headers: {
+                        '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                    },
+                    data: function (d) {
+
+                        var desde = $('#dteFecha').data('daterangepicker').startDate.format("YYYY-MM-DD");
+                        var hasta = $('#dteFecha').data('daterangepicker').endDate.format("YYYY-MM-DD");
+
+                        var filtro = [
+                            { key: 'desde', value: desde },
+                            { key: 'hasta', value: hasta },
+                            { key: 'numero', value: $('#txtNumero').val() },
+                            { key: 'guia', value: $('#txtGuia').val() },
+                            { key: 'estadoId', value: $('#cboEstadoId option:selected').val() }
+
+                        ];
+
+                        d.param = JSON.stringify(filtro);
+                    },
+                     dataSrc: function (resp) {
+                        enabledButtonOnClick(botonBuscar);
+                        return resp.data;
+                    },
+                    error: function handleAjaxError(xhr, textStatus, error) {
+                        enabledButtonOnClick(botonBuscar);
+                        $(".dataTables_processing").hide();
+                    }
+                },
+
+                columns: [
+                    { data: null, title: "", className: 'expand', orderable: false, defaultContent: '<i class="fas fa-plus-square text-green"></i>', width: 2 },
+
+                    { data: "numero", title: "Numero", name: "numero", defaultContent: "" },
+                    {
+                        data: "fechaInicio", title: "Fecha Inicio", name: "fecha", defaultContent: "", width: 100, render: function (data, row) {
+
+                            if (data !== undefined && data !== null)
+                                return moment(data).format('DD/MM/YYYY HH:mm');
+                        }
+                    },
+                    {
+                        data: null, title: "Transportista", name: "transportista", defaultContent: "",
+                        render: function (data, row) {
+                            
+                            var transportistaDestino = '';
+                            var transportista = '';
+
+                            if (data.transportistaCodigo !== null)
+                                    transportista  = '<b> ' + data.transportistaCodigo + '</b> ' + data.transportista;
+
+
+                            if (data.transportistaDestinoCodigo !== null)
+                                transportistaDestino = '<b><i class="fas fa-truck-pickup text-green"></i> ' + data.transportistaDestinoCodigo + '</b> ' + data.transportistaDestino;
+
+
+                            if (data.transportistaDestinoCodigo === null || data.transportistaDestinoCodigo === data.transportistaCodigo)
+                                return transportista;
+
+
+                            return transportistaDestino + ' <del>' + transportista + '</del>';
+                        }
+                    },
+
+                    
+                    //{ data: "patente", title: "Patente", name: "patente", defaultContent: "" },
+                    {
+                        data: null, title: "Vehiculo", name: "vehiculo", defaultContent: "",
+                        render: function (data, row) {
+
+                            if (data.patente === null)
+                                return "";
+
+                            return '<b>' + data.patente + '</b> ' + data.vehiculo + ' <small>' + data.vehiculoTipo + '</small>';
+                        }
+                    },
+
+
+                    { data: "cantidadGuias", title: "Cantidad Guias", name: "cantidadGuias", defaultContent: "" },
+                    { data: "codigoViaje", title: "Codigo Viaje", name: "codigoViaje", defaultContent: "", 
+                        render: function (data, row) {
+                            if (data !== undefined && data !== null)
+                                return '<small>' + data + '</small>';
+                        }
+                    
+                    },
+                    {
+                        data: "fechaUltimoMov", title: "Fecha Ultimo Mov.", name: "fecha", defaultContent: "", width: 100, render: function (data, row) {
+                            if (data !== undefined && data !== null)
+                                return moment(data).format('DD/MM/YYYY HH:mm');
+                        }
+                    },
+
+
+                    { data: "estado", title: "Estado", name: "estado", defaultContent: "" },
+                    {
+                        data: null, width: 20, orderable: false, defaultContent: "",
+                        render: function (data, row) {
+
+                            var hrefEdit = '@Url.Content("~/Envios/Create/")' + data.numero;
+                            var icoEdit =  '<a href="' + hrefEdit + '" title="Guardar"><i class="far fa-edit text-success"></i></a>';
+
+
+                            if (data.envioId === null)
+                                return icoEdit
+
+                            if (data.envioId !== null && (data.estadoId === @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Pendiente) ||
+                                data.estadoId === @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.ConError) )) {
+
+                                var icoPreView = '<a href="#" class="btn-sincronizar-ajax" data-envio-id="' + data.envioId + '" title="Sincronizar"> <i class="fas fa-satellite text-warning"></i></a>';
+
+                                return icoEdit + ' ' + icoPreView;
+                            }
+
+                            else {
+                                return icoEdit;
+                            }
+                        }
+                    }
+
+                ],
+
+                createdRow: function (row, data) {
+                    if (data.estadoColor !== '') {
+                        $(row.cells).each(function () {
+                            var color = "'" + data.estadoColor + "'";
+                            $(this).css("color", color);
+                        });
+                    }
+                },
+                language: {
+                    url: '@Url.Content("~/plugins/datatables/idioma.json")'
+                }
+            })
+        }
+
+    });
+
+</script>

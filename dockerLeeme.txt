@@ -1,0 +1,49 @@
+si da error en el certificado, verificar en la configuracion del docker Engine
+
+{
+  "builder": {
+    "gc": {
+      "defaultKeepStorage": "20GB",
+      "enabled": true
+    }
+  },
+  "experimental": false
+ 
+,
+"insecure-registries": [
+    "nexus.meta.com.ar:5000"
+  ]
+}
+
+https://dev.azure.com/meta-platform/infra-config/_git/infra-config?path=%2Fcompose%2Ftest%2Fservices%2Fdocker-compose.yaml&version=GBtransportistas
+
+docker build -t tracker:1.0.0 -f Dockerfile .
+
+docker build -t nexus.meta.com.ar:5000/tracker:1.0.8 .
+docker login nexus.meta.com.ar
+usuario y clave 
+
+
+verificar si se realizo el push 
+
+http://nexus.meta.com.ar
+
+despues completar en compose 
+
+https://dev.azure.com/meta-platform/infra-config/_git/infra-config?version=GTTest_11-07-2025&path=/compose/test/services/docker-compose.yaml
+
+
+tracker:
+    image: nexus.meta.com.ar:5000/tracker:1.0.0
+    ports:
+      - "8085:8080"
+    env_file:
+      - ../.env
+    networks:
+      - infra-net
+    environment:
+      ConnectionStrings_TrackerDbConnectionString: "Server=172.16.40.14,61814;Database=Tracker_Devel;User Id=lectura_desarrollo;Password=Meta2023;TrustServerCertificate=True;MultipleActiveResultSets=true",
+      ASPNETCORE_PATHBASE: tracker,
+      ASPNETCORE_ENVIRONMENT: qa o prod
+    
+

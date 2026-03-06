@@ -1,0 +1,71 @@
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+    var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
+}
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+
+    <title>META - Tracker </title>
+    <link id="favicon" rel="icon" href="~/favicon.ico" type="image/png" sizes="16x16">
+
+
+    <script>
+        window.appBasePath = '@Context.Request.PathBase.ToString().TrimEnd('/')';
+    </script>
+
+
+    <script src="~/plugins/jquery/jquery.min.js" asp-append-version="true"></script>
+    <script src="~/plugins/jquery-ui/jquery-ui.min.js" asp-append-version="true"></script>
+
+    <script src="~/plugins/toastr/toastr.min.js" asp-append-version="true"></script>
+    <script src="~/js/signalr.min.js" asp-append-version="true"></script>
+    <link href="~/plugins/toastr/toastr.min.css" asp-append-version="true" />
+
+
+    @if (isAuthenticated)
+    {
+        <script src="~/js/notificacion.js" asp-append-version="true"></script>
+    }
+
+    <partial name="AdminLTE/_Styles" />
+    <partial name="AdminLTE/_Scripts" />
+
+</head>
+
+
+<body class="sidebar-mini sidebar-collapse layout-fixed text-sm ">
+    <audio id="audioNotificacion" src='@Url.Content("~/sound/notificacion.wav")' muted></audio>
+    
+    <div class="wrapper">
+
+        <partial name="AdminLTE/_TopNavigation" />
+        <partial name="AdminLTE/_MainNavigation" />
+
+        <div class="content-wrapper">
+            <div class="content">
+                <div class="container-fluid">
+
+                    @RenderBody()
+
+                    <div id="zonaNotificaciones" class="noti-container ui-widget-content">
+                        <div class="noti-header ui-widget-header d-flex justify-content-between align-items-center" style="cursor: move;">
+                            <small class="text-muted pl-2">🛈 Arrastrá o cerrá este panel. Se mostrará nuevamente al llegar una nueva notificación.</small>
+                            <button onclick="borrarTodasLasNotificaciones()" title="Borrar todas las notificaciones">
+                                <i class="fas fa-trash-alt text-danger"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+            @await Component.InvokeAsync("AppFooter")
+    </div>
+</body>
+</html>

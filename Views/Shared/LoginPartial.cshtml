@@ -1,0 +1,239 @@
+﻿@model Tracker.DTOs.LoginDTO
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+<script src="~/js/jquery-captcha.min.js"></script>
+
+<div class="d-flex align-items-center justify-content-center pt-3">
+    <div class="col-md-4 col-xs-12">
+        <div class="card elevation-2 p-4">
+            <!-- Logo del sistema -->
+            <div class="text-center mb-3" style="z-index:11110">
+                <span class="d-inline-block text-center" style="font-size: calc(8px + 1vw);">
+                    <b>META</b> Tracker
+                </span>
+            </div>
+
+            <!-- Imagen circular de perfil/logo -->
+            <div class="text-center mb-3">
+                <div class="lockscreen-image">
+                    <img src="~/img/fav120-2.png" class="user-image img-circle elevation-2" alt="Logo del Sistema">
+                </div>
+            </div>
+
+            <form id="frmLogin">
+                <!-- Resumen general -->
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
+
+                <div class="input-group mb-1">
+                    <input asp-for="Correo" type="email" class="form-control" placeholder="Correo" />
+                    <div class="input-group-append">
+                        <div class="input-group-text">
+                            <span class="fas fa-envelope"></span>
+                        </div>
+                    </div>
+                </div>
+                <span asp-validation-for="Correo" class="text-danger small d-block mb-2"></span>
+
+                <div class="input-group mb-1">
+                    <input asp-for="Clave" type="password" class="form-control" placeholder="Contraseña" />
+                    <div class="input-group-append">
+                        <div class="input-group-text">
+                            <span class="fas fa-lock"></span>
+                        </div>
+                    </div>
+                </div>
+                <span asp-validation-for="Clave" class="text-danger small d-block mb-2"></span>
+
+                <!-- Captcha -->
+                <div class="captcha-container p-3 mb-3" style="background-color: #f0f8ff; border-radius: 5px;">
+                    <label class="col-md-12" for="captcha">
+                        Ingrese el código:
+                    </label>
+
+                    <div class="d-flex align-items-center mb-2">
+                        <canvas id="captchaCanvas" width="140" height="50"
+                                style="border-radius:4px; background-color:#ffffff;"></canvas>
+                        <button type="button"
+                                id="btnRefreshCaptcha"
+                                class="btn btn-link btn-sm ml-2"
+                                title="Actualizar código">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+
+                    <input type="text" class="form-control mt-1" id="captcha" name="captcha" placeholder="Ingrese las letras" />
+                    <small id="captchaHelp" class="form-text text-muted">
+                        Escribí las letras que ves (no importa mayúsculas/minúsculas).
+                    </small>
+                    <small id="captchaResult" class="form-text text-danger">&nbsp;</small>
+                </div>
+
+                <div>
+                    <button id="btnIngresar" type="submit" class="btn btn-block btn-success"
+                            title="Ingresar al sistema" data-text["Ingresar"]>
+                        <i class="fas fa-sign-in-alt"></i> Ingresar
+                    </button>
+                </div>
+            </form>
+
+            <!-- Mensaje de ayuda -->
+            <div class="help-block text-center mt-3">
+                Por tu seguridad, nunca compartas los datos de acceso.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+
+        let captchaAnswer = "";
+
+        function randomCaptchaText(length = 4) {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz";
+            let text = "";
+            for (let i = 0; i < length; i++) {
+                const idx = Math.floor(Math.random() * chars.length);
+                text += chars.charAt(idx);
+            }
+            return text;
+        }
+
+        function drawCaptcha() {
+            const canvas = document.getElementById("captchaCanvas");
+            if (!canvas) return;
+
+            const ctx = canvas.getContext("2d");
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Fondo
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = "#f5f9ff";
+            ctx.fillRect(0, 0, width, height);
+
+            // Líneas de ruido
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * width, Math.random() * height);
+                ctx.lineTo(Math.random() * width, Math.random() * height);
+                ctx.strokeStyle = "rgba(" +
+                    Math.floor(Math.random() * 255) + "," +
+                    Math.floor(Math.random() * 255) + "," +
+                    Math.floor(Math.random() * 255) + ",0.7)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Texto del captcha
+            const text = randomCaptchaText(4);
+            captchaAnswer = text;
+
+            const colors = ["#e53935", "#1e88e5", "#43a047", "#fb8c00", "#8e24aa"];
+            const fonts = ["bold 26px Arial", "bold 24px Verdana", "bold 26px Tahoma"];
+
+            const letterSpacing = width / (text.length + 1);
+            for (let i = 0; i < text.length; i++) {
+                const ch = text.charAt(i);
+                const x = letterSpacing * (i + 1);
+                const y = height / 2 + 8;
+
+                const angle = (Math.random() - 0.5) * 0.7; // -0.35 a 0.35 rad aprox
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+
+                ctx.font = fonts[Math.floor(Math.random() * fonts.length)];
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                ctx.textBaseline = "middle";
+
+                const metrics = ctx.measureText(ch);
+                ctx.fillText(ch, -metrics.width / 2, 0);
+
+                ctx.restore();
+            }
+
+            // Puntitos de ruido
+            for (let i = 0; i < 30; i++) {
+                ctx.fillStyle = "rgba(" +
+                    Math.floor(Math.random() * 255) + "," +
+                    Math.floor(Math.random() * 255) + "," +
+                    Math.floor(Math.random() * 255) + ",0.8)";
+                ctx.beginPath();
+                ctx.arc(Math.random() * width, Math.random() * height, 1, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        // Inicializar captcha
+        drawCaptcha();
+
+        $("#btnRefreshCaptcha").on("click", function () {
+            drawCaptcha();
+            $("#captcha").val("");
+            $("#captchaResult").html("&nbsp;").removeClass("text-success").addClass("text-danger");
+        });
+
+        $("#frmLogin").submit(function (e) {
+            e.preventDefault();
+
+            $("#captchaResult").html("&nbsp;").removeClass("text-success").addClass("text-danger");
+
+            if (!$("#frmLogin").valid()) {
+                $("[data-valmsg-summary=true]")
+                    .addClass("text-danger")
+                    .html("Por favor completá los campos obligatorios.");
+                return;
+            }
+
+            const raw = ($("#captcha").val() || "").trim();
+
+            if (!raw) {
+                $("#captchaResult").text("El código es obligatorio.");
+                return;
+            }
+
+            if (raw.toLowerCase() !== captchaAnswer.toLowerCase()) {
+                $("#captchaResult").text("Código incorrecto. Intentalo de nuevo.");
+                drawCaptcha();
+                $("#captcha").val("");
+                return;
+            }
+
+            $("#captchaResult")
+                .text("¡Verificación correcta! Ingresando...")
+                .removeClass("text-danger")
+                .addClass("text-success");
+
+            $("#btnIngresar").prop("disabled", true)
+                .html('<i class="fas fa-spinner fa-spin"></i> Ingresando...');
+
+            $.ajax({
+                type: "POST",
+                url: '@Url.Action("Login", "Account")',
+                dataType: "json",
+                headers: {
+                    '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                },
+                data: $("#frmLogin").serialize(),
+                success: function (data) {
+                    viewMessage(data);
+                },
+                complete: function () {
+                    $("#btnIngresar").prop("disabled", false)
+                        .html('<i class="fas fa-sign-in-alt"></i> Ingresar');
+                },
+                error: function () {
+                    $("#btnIngresar").prop("disabled", false)
+                        .html('<i class="fas fa-sign-in-alt"></i> Ingresar');
+                    drawCaptcha();
+                    $("#captcha").val("");
+                    $("#captchaResult").text("Error al iniciar sesión. Intentalo nuevamente.");
+                }
+            });
+        });
+    });
+</script>

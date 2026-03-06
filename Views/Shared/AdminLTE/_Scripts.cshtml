@@ -1,0 +1,153 @@
+﻿
+
+<script src="~/plugins/bootstrap/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
+
+<script src="~/plugins/bootbox/bootbox.min.js" asp-append-version="true"></script>
+<script src="~/plugins/bootbox/bootbox.locales.min.js" asp-append-version="true"></script>
+
+<script src="~/plugins/moment/moment.min.js" asp-append-version="true"></script>
+<script src="~/plugins/moment/locale/es.js" asp-append-version="true"></script>
+
+<script src="~/js/adminlte.min.js" asp-append-version="true"></script>
+
+<script src="~/plugins/jquery-validation/jquery.validate.min.js" asp-append-version="true"></script>
+<script src="~/plugins/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js" asp-append-version="true"></script>
+<script src="~/plugins/jquery-validation/localization/messages_es_AR.min.js" asp-append-version="true"></script>
+<!-- DataTables  & Plugins -->
+
+<script src="~/plugins/datatables/jquery.dataTables.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-buttons/js/dataTables.buttons.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-select/js/dataTables.select.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-rowgroup/js/dataTables.rowGroup.min.js" asp-append-version="true"></script>
+
+<script src="~/plugins/datatables-buttons/js/buttons.html5.min.js" asp-append-version="true"></script>
+<script src="~/plugins/pdfmake/pdfmake.min.js" asp-append-version="true"></script>
+<script src="~/plugins/pdfmake/vfs_fonts.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-buttons/js/buttons.html5.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-buttons/js/buttons.print.min.js" asp-append-version="true"></script>
+<script src="~/plugins/datatables-buttons/js/buttons.colVis.min.js" asp-append-version="true"></script>
+
+<script src="~/plugins/jszip/jszip.min.js" asp-append-version="true"></script>
+
+<script type="text/javascript">
+
+    const favicon = document.querySelector('[rel=icon]');
+
+    function disableButtonOnSubmit(frm) {
+
+
+        if (!$(frm).valid())
+            return;
+
+        var button = $(frm).find(":submit")
+        disableButtonOnClick(button);
+    }
+
+    function disableButtonOnClick(button) {
+
+        var originalText = $(button).html();
+        $(button).prop("disabled", true).html('<i class="fas fa-sync-alt fa-spin"></i>' + originalText);
+
+    }
+
+    function enabledButtonOnClick(button) {
+
+        $(button).prop("disabled", false);
+        var buttonText = $(button).html();
+        var originalText = buttonText.replace('<i class="fas fa-sync-alt fa-spin"></i>', ''); // Elimina el icono de rueda de engranaje
+
+        $(button).html(originalText);
+    }
+
+    toastr.options = {
+        "debug": false,
+        "positionClass": "toast-top-center",
+        "onclick": null,
+        "fadeIn": 300,
+        "fadeOut": 1000,
+        "timeOut": 5000,
+        "extendedTimeOut": 1000,
+        "closeButton": false,
+        "newestOnTop": false,
+        "progressBar": true,
+        "preventDuplicates": true,
+        "showDuration": "300",
+        "hideDuration": "1000",
+        "showEasing": "swing",
+        "hideEasing": "linear",
+        "showMethod": "fadeIn",
+        "hideMethod": "fadeOut"
+    }
+
+
+        function viewMessage(objMsg) {
+
+        if (objMsg !== null && objMsg !== undefined && objMsg !== "") {
+
+            var status = objMsg.status;
+            var msg = objMsg.value;
+
+            if (msg === undefined || msg === null || msg === '')
+                return;
+
+            // Normalizar status para que acepte tanto string como int
+            status = typeof status === "string" ? status.toUpperCase() : status;
+
+            switch (status) {
+                case "OK":
+                case 0:
+                    toastr.success(msg);
+                    break;
+
+                case "ERROR":
+                case 1:
+                    toastr.error(msg);
+                    break;
+
+                case "WARNING":
+                case 2:
+                    toastr.warning(msg);
+                    break;
+
+                case "INFO":
+                case 3:
+                    toastr.info(msg);
+                    break;
+
+                case "REDIRECT":
+                case 4:
+                    window.location = msg;
+                    break;
+
+                case "REDIRECT_BLANK":
+                case 5:
+                    window.open(msg, '_blank');
+                    break;
+
+                default:
+                    console.warn("Estado desconocido en viewMessage:", status);
+                    break;
+            }
+        }
+    }
+
+
+    $(document).ready(function () {
+
+        var isAuthenticated = @(User?.Identity?.IsAuthenticated == true ? "true" : "false");
+
+        var msg = "@Html.Raw(TempData["mensaje"])"
+
+        if (msg !== "") {
+            var strMsg = msg.split("|");
+
+            var aa = {
+                status: strMsg[1],
+                value: strMsg[0]
+            };
+
+            viewMessage(aa);
+        }
+    });
+</script>

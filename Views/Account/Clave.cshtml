@@ -1,0 +1,63 @@
+﻿@model Tracker.DTOs.ClaveDTO
+@{
+    ViewData["Title"] = "Login";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+
+<div class="row pt-4">
+    <!-- /.login-logo -->
+    <div class="card card-outline card-primary">
+        
+        <div class="card-body">
+            <p class="login-box-msg">Ingrese sus datos para poder modificar su contraseña actual</p>
+
+            <form asp-action="Clave" asp-route-returnUrl="@ViewData["ReturnUrl"]">
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+
+                <div class="col-md-12 col-sm-12 col-12">
+                    <div class="info-box shadow-lg">
+                        <span class="info-box-icon bg-danger"><i class="fas fa-unlock-alt"></i></span>
+
+                        <div class="info-box-content">
+                            <span class="info-box-text"> <label>Clave Actual</label></span>
+                            <input asp-for="ClaveActual" class="form-control" autofocus required />
+                            <span asp-validation-for="ClaveActual" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-12 col-sm-12 col-12">
+                    <div class="info-box shadow-lg">
+                        <span class="info-box-icon bg-green"><i class="fas fa-key"></i></span>
+
+                        <div class="info-box-content">
+                            <span class="info-box-text"> <label>Clave Nueva</label></span>
+                            <input asp-for="ClaveNueva" class="form-control" required />
+                            <span asp-validation-for="ClaveNueva" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12 col-sm-12 col-12">
+                    <div class="info-box shadow-lg">
+                        <span class="info-box-icon bg-green"><i class="fas fa-lock"></i></span>
+
+                        <div class="info-box-content">
+                            <span class="info-box-text"> <label>Clave Confirmacion</label></span>
+                            <input asp-for="ClaveConfirmacion" class="form-control" required />
+                            <span asp-validation-for="ClaveConfirmacion" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-4 ">
+                    <button type="submit" class="btn btn-primary btn-block">Actualizar</button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+

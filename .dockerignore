@@ -1,0 +1,26 @@
+# Artefactos de build
+bin/
+obj/
+out/
+publish/
+*.log
+
+# Config de usuario / VS
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Paquetes NuGet descargados localmente (si existieran)
+packages/
+
+# Control de versiones
+.git/
+.gitignore
+
+# Otros
+Dockerfile.win
+docker-compose.yml
+docker-compose.*.yml
+*.ps1
+*.cmd

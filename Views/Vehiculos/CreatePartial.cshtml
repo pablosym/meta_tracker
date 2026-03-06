@@ -1,0 +1,102 @@
+﻿@model Tracker.DTOs.VehiculoDTO
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
+@{
+    var tokenSet = antiforgery.GetAndStoreTokens(Context);
+}
+
+
+<section class="content-header">
+    <div class="col-md-12">
+        <div class="card card-primary card-outline">
+            <div class="card-header">
+                <b> Vehiculos </b>
+                <div class="card-tools">
+                    <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                    <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body ">
+                <form id="frmVehiculo">
+                    <div class="row">
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="Patente" class="control-label"></label>
+                            <input asp-for="Patente" class="form-control" autofocus required />
+                            <span asp-validation-for="Patente" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-5  col-xs-12">
+                            <label asp-for="Descripcion" class="control-label"></label>
+                            <input asp-for="Descripcion" class="form-control" required  />
+                            <span asp-validation-for="Descripcion" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="TipoId" class="control-label"></label>
+                            <select asp-for="TipoId" class="form-control" asp-items="ViewBag.listVehiculos" required>
+                                <option value="-1">(Seleccione un Item)</option>
+                            </select>
+                            <span asp-validation-for="TipoId" class="text-danger"></span>
+                        </div>
+                    </div>                 
+                    <div class="card-footer ">
+                        <div class="float-left">
+                        </div>
+                        <div class="float-right">
+                            <button type="button" id="btnAceptar" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+
+        setTimeout(function () {
+            $('#Patente').focus();
+        }, 500);
+
+        $("#btnAceptar").click(function (e) {
+            e.preventDefault();
+            if (!$("#frmVehiculo").valid())
+                return;
+
+
+            var boton = this;
+            disableButtonOnClick(boton);
+
+            $.ajax({
+                type: "POST",
+                url: '@Url.Action("Create")',
+                dataType: "json",
+                headers: {
+                    '@tokenSet.HeaderName': '@tokenSet.RequestToken'
+                },
+                data: $('#frmVehiculo').serialize() + "&returnUrl=js",
+                success: function (data) {
+
+                    enabledButtonOnClick(boton);
+
+                    viewMessage(data);
+
+                    if (data.status === 0 || data.status === "OK") {
+
+                        var vehiculoFromBBDD = JSON.stringify(data.tagObj);
+                        vehiculoGrabado(vehiculoFromBBDD); //es el evento para que sepa la pantalla de envios que tiene que cerrarse
+                    }
+                },
+                error: function (e) {
+                    enabledButtonOnClick(boton);
+                    toastr.error(e.responseText);
+                }
+            });
+        });
+    })
+
+</script>

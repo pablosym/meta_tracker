@@ -1,0 +1,7 @@
+﻿@model Tracker.DTOs.VehiculoDTO
+@{
+    ViewData["Title"] = "Crear Vehiculo";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+@await Html.PartialAsync("CreatePartial", @Model ?? null)

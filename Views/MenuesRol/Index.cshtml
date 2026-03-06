@@ -1,0 +1,49 @@
+﻿@model Tracker.DTOs.MenuesRolDTO
+
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<section class="content-header">
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card card-outline card-primary ">
+                <div class="card-header">
+                    <b> Menu por Rol </b> <small> Filtros Disponibles</small>
+
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+
+                    <form asp-action="Edit">
+                        
+                        <div class="row">
+                            <div class="form-group col-md-4">
+
+                                <label asp-for="IdRol" class="control-label"></label>
+                                <select asp-for="IdRol" class="form-control" asp-items="ViewBag.IdRol" >
+                                    <option value="-1">(Seleccione) </option>
+                                </select>
+                                <span asp-validation-for="IdRol" class="text-danger"></span>
+                            </div>
+                        </div>
+
+                        <div class="card-footer text-right">
+                            <button id="btnAceptar" type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Aceptar </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

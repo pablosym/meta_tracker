@@ -1,0 +1,196 @@
+﻿@model Tracker.DTOs.TransportistaDTO
+@{
+    ViewData["Title"] = "Editar Transportista";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<script src="~/js/mapa.js"></script>
+<link href="~/js/mapa.css" rel="stylesheet" />
+
+<section class="content-header">
+
+
+
+    <div class="row">
+
+
+        <div class="col-md-12">
+            <div class="card card-warning card-outline">
+                <div class="card-header">
+                    <b> Modificacion </b> @Model.Nombre
+
+                    <div class="card-tools">
+                        <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                        <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body ">
+                    <form asp-action="Edit" onsubmit="disableButtonOnSubmit(this)">
+                        <input type="hidden" asp-for="Id" />
+
+                        <div asp-validation-summary="All" class="text-danger"></div>
+                        <div class="row">
+                            <div class="form-group col-md-2  col-xs-12">
+                                <label asp-for="Codigo" class="control-label"></label>
+                                <input asp-for="Codigo" class="form-control" readonly />
+                                <span asp-validation-for="Codigo" class="text-danger"></span>
+                            </div>
+
+                            <div class="form-group col-md-10 col-xs-12 ">
+                                <label asp-for="Nombre" class="control-label"></label>
+                                <input asp-for="Nombre" class="form-control" readonly />
+                                <span asp-validation-for="Nombre" class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="row">
+
+                            <div class="form-group col-md-7  col-xs-12">
+                                <label asp-for="Direccion" class="control-label"></label>
+                                <input asp-for="Direccion" class="form-control" autocomplete="off" spellcheck="true" autofocus />
+                                <span class="coordenadas" style="display:none;"><i class="fas fa-satellite fa-spin"></i> Buscando coordenadas....</span>
+                                <span asp-validation-for="Direccion" class="text-danger"></span>
+                            </div>
+
+                            <div class="form-group col-md-3  col-xs-12">
+                                <label asp-for="Coordenadas" class="control-label"></label>
+                                <input asp-for="Coordenadas" class="form-control" autocomplete="off" />
+
+                            </div>
+
+
+                            <div class="form-group col-md-2 col-xs-12 ">
+                                <label asp-for="EstadoId" class="control-label"></label>
+                                <select asp-for="EstadoId" class="form-control" asp-items="ViewBag.listEstados" required>
+                                </select>
+                                <span asp-validation-for="EstadoId" class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="card-footer ">
+                            <div class="float-left">
+                            </div>
+                            <div class="float-right">
+                                <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-12 ">
+            <div id="map"  style="height: 400px;"></div>
+        </div>
+    </div>
+</section>
+
+<script type="text/javascript">
+
+
+    $(document).ready(function () {
+        var map = null; // Declara la variable del mapa fuera de la función
+
+        var coordenadas = $("#Coordenadas").val();
+
+        llamarAlMapa(coordenadas);
+
+        $("#Direccion").change(function (e) {
+            e.preventDefault();
+
+            obtenerCoordenadas($("#Direccion").val());
+        });
+
+        $("#Coordenadas").change(function (e) {
+            e.preventDefault();
+        
+            llamarAlMapa(coordenadas);
+            
+        });
+
+        
+
+        // Función para obtener coordenadas a partir de una dirección
+        function obtenerCoordenadas(direccion) {
+            // URL de la API de Nominatim
+            var apiUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(direccion)}`;
+
+            $('.coordenadas').show();
+
+            // Realizar una solicitud GET a la API
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    // Verificar si se encontraron resultados
+                    if (data && data.length > 0) {
+                        // Obtener las coordenadas del primer resultado
+                        var latitud = data[0].lat;
+                        var longitud = data[0].lon;
+
+                        var coordenadas = `${latitud}, ${longitud}`;
+                        // Imprimir las coordenadas en la consola (puedes usarlas como desees)
+                        console.log(`Latitud: ${latitud}, Longitud: ${longitud}`);
+                        $('#Coordenadas').val(coordenadas).trigger('change');
+                        
+
+                    } else {
+                        $('#Coordenadas').val('');
+                        console.log('No se encontraron resultados para la dirección proporcionada.');
+                    }
+
+                    $('.coordenadas').hide();
+                })
+                .catch(error => {
+                    console.error('Error al obtener coordenadas:', error);
+                    $('.coordenadas').hide();
+                });
+        }
+
+
+
+        function visualizarEnMapa(latitud, longitud) {
+
+            console.log('visualizar en mapa');
+
+            // Verifica si el mapa ya está inicializado
+            if (map === null) {
+                map = L.map('map').setView([latitud, longitud], 13); // Configura la ubicación y el nivel de zoom
+
+                // Agrega una capa de mapa base de OpenStreetMap
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                }).addTo(map);
+            }
+            // Agrega un marcador con coordenadas específicas
+            var marker = L.marker([latitud, longitud]).addTo(map); // Cambia estas coordenadas
+
+            // Agrega un popup al marcador para mostrar las coordenadas
+            marker.bindPopup(`Coordenadas: ${latitud}, ${longitud}`).openPopup(); // Cambia las coordenadas aquí
+
+        }
+
+
+        function llamarAlMapa() {
+            var coordenadas = $("#Coordenadas").val();
+            var coordenadasArray = coordenadas.split(','); // Divide las coordenadas en un arreglo
+
+            if (coordenadasArray.length === 2) {
+                var latitud = parseFloat(coordenadasArray[0].trim());
+                var longitud = parseFloat(coordenadasArray[1].trim());
+
+                if (!isNaN(latitud) && !isNaN(longitud)) {
+                    visualizarEnMapa(latitud, longitud);
+                } else {
+                    console.log('Formato de coordenadas incorrecto.');
+                }
+            } else {
+                console.log('Formato de coordenadas incorrecto.');
+            }
+        }
+
+
+    });
+
+</script>

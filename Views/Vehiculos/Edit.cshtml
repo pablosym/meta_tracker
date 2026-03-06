@@ -1,0 +1,61 @@
+﻿@model Tracker.DTOs.VehiculoDTO
+@{
+    ViewData["Title"] = "Editar Vehiculo";
+    Layout = "~/Views/Shared/AdminLTE/_Layout.cshtml";
+}
+
+<section class="content-header">
+    <div class="col-md-12">
+        <div class="card card-warning card-outline">
+            <div class="card-header">
+                <b> Modificacion </b> @Model.Descripcion
+
+                <div class="card-tools">
+                    <a class="btn btn-tool" title="Ir al Inicio" asp-area="" asp-controller="Home" asp-action="Index">  <i class="nav-icon fas fa-home"></i></a>
+                    <a class="btn btn-tool" title="Atras" onclick="history.go(-1); return false;" href="#">  <i class="fas fa-arrow-alt-circle-left"></i></a>
+
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body ">
+                <form asp-action="Edit" onsubmit="disableButtonOnSubmit(this)">
+                    <div class="row">
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="Patente" class="control-label"></label>
+                            <input asp-for="Patente" class="form-control" />
+                            <span asp-validation-for="Patente" class="text-danger" autofocus></span>
+                        </div>
+                        <div class="form-group col-md-5  col-xs-12">
+                            <label asp-for="Descripcion" class="control-label"></label>
+                            <input asp-for="Descripcion" class="form-control" />
+                            <span asp-validation-for="Descripcion" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="TipoId" class="control-label"></label>
+                            <select asp-for="TipoId" class="form-control" asp-items="ViewBag.listVehiculos" required>
+                                <option value="-1">(Seleccione un Item)</option>
+                            </select>
+                            <span asp-validation-for="TipoId" class="text-danger"></span>
+                        </div>
+                        <div class="form-group col-md-4 col-xs-12 ">
+                            <label asp-for="EstadoId" class="control-label"></label>
+                            <select asp-for="EstadoId" class="form-control" asp-items="ViewBag.listEstados" required>
+                                <option value="-1">(Seleccione un Item)</option>
+                            </select>
+                            <span asp-validation-for="EstadoId" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <div class="card-footer ">
+                        <div class="float-left">
+                        </div>
+                        <div class="float-right">
+                            <button type="submit" value="Aceptar" class="btn btn-success"> <i class="far fa-save"></i> Guardar </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
