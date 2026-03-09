@@ -160,6 +160,20 @@
     $(document).ready(function () {
 
         var dataSet = [];
+        var sincronizacionEnCurso = false;
+
+        function setEstadoBotonSincronizar(enEspera) {
+            var boton = $('#btnSincronizar');
+
+            if (enEspera) {
+                boton.prop('disabled', true)
+                    .html("<i class='fas fa-sync-alt fa-spin'></i> Waiting...");
+                return;
+            }
+
+            boton.prop('disabled', false)
+                .html("<i class='fas fa-satellite'></i> Sincronizar");
+        }
 
         EnvioTablaInit(@Json.Serialize(@tokenSet), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Pendiente), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.ConError) );
         ChoferesInit(@Json.Serialize(@tokenSet));
@@ -170,6 +184,10 @@
 
         $("#btnSincronizar").click(function (e) {
             e.preventDefault();
+
+            if (sincronizacionEnCurso) {
+                return;
+            }
             
             if (dataSet.length  <= 0) {
                 toastr.warning("Debe tener algun envio para poder sincronizar.");
@@ -202,9 +220,8 @@
                 send.listEnvios[i].fechaTurno = $('#FechaTurno').val();
             }
 
-            var boton = $('#btnSincronizar');
-
-            disableButtonOnClick(boton);
+            sincronizacionEnCurso = true;
+            setEstadoBotonSincronizar(true);
 
             $.ajax({
                 type: "POST",
@@ -217,7 +234,8 @@
 
                 success: function (data) {
 
-                    enabledButtonOnClick(boton);
+                    sincronizacionEnCurso = false;
+                    setEstadoBotonSincronizar(false);
 
                     if (data.status === 0 || data.status === "OK") {
 
@@ -234,7 +252,8 @@
 
                 },
                 error: function (e) {
-                    enabledButtonOnClick(boton);
+                    sincronizacionEnCurso = false;
+                    setEstadoBotonSincronizar(false);
                     toastr.error(e.responseText);
                 }
             });
