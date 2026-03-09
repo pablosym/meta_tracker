@@ -122,12 +122,19 @@
         e.preventDefault();
 
         var $btn = $(this);
+        if ($btn.data('is-loading')) {
+            return;
+        }
+
         var envioId = $btn.data('envio-id');
         var originalIcon = $btn.html();
 
+        $btn.data('is-loading', true);
         // Ícono de espera
-        $btn.html('<i class="fas fa-spinner fa-spin text-secondary"></i>');
+        $btn.html('<i class="fas fa-spinner fa-spin text-secondary"></i> <small>Waiting...</small>');
         $btn.addClass('disabled');
+        $btn.css('pointer-events', 'none');
+        $btn.attr('aria-disabled', 'true');
 
         $.ajax({
             url: '@Url.Action("Sincronizar")',
@@ -142,6 +149,9 @@
             complete: function () {
                 $btn.html(originalIcon);
                 $btn.removeClass('disabled');
+                $btn.css('pointer-events', '');
+                $btn.removeAttr('aria-disabled');
+                $btn.data('is-loading', false);
             }
         });
     });
