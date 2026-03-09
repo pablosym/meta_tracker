@@ -1111,7 +1111,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
         GuiaDTO guia,
         Tracker_DevelContext context,
         UsuarioDTO usuario,
-        int? envioNumero = null)
+        long? envioNumero = null)
     {
         var telefonos = articulos
             .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
