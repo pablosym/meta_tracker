@@ -23,11 +23,12 @@ public class ErrorHandlerMiddleware
         catch (System.Net.Http.HttpRequestException ex )
         {
             var response = context.Response;
+            var pathBase = context.Request.PathBase.HasValue ? context.Request.PathBase.Value : string.Empty;
 
             if (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                response.Redirect("/Account/Login");
+                response.Redirect($"{pathBase}/Account/Login");
                 Error.WriteLog("Token Vencido desde el error handler");
                 return;
             }
@@ -79,7 +80,8 @@ public class ErrorHandlerMiddleware
             //Error.WriteLog(result);
 
             Error.WriteLog(error);
-            response.Redirect("/Home/Error");
+            var pathBase = context.Request.PathBase.HasValue ? context.Request.PathBase.Value : string.Empty;
+            response.Redirect($"{pathBase}/Home/Error");
             }
     }
 }
