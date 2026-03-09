@@ -161,13 +161,10 @@
 
         var dataSet = [];
         var sincronizacionEnCurso = false;
-        var esperandoFinalizacion = false;
-        var timeoutFinalizacion = null;
-        var usuarioActual = '@(User?.Identity?.Name ?? string.Empty)';
 
         function setEstadoBotonSincronizar(enEspera) {
             var boton = $('#btnSincronizar');
-
+            
             if (enEspera) {
                 boton.prop('disabled', true)
                     .html("<i class='fas fa-sync-alt fa-spin'></i> Waiting...");
@@ -177,48 +174,6 @@
             boton.prop('disabled', false)
                 .html("<i class='fas fa-satellite'></i> Sincronizar");
         }
-
-        function finalizarEsperaSincronizacion() {
-            sincronizacionEnCurso = false;
-            esperandoFinalizacion = false;
-
-            if (timeoutFinalizacion !== null) {
-                clearTimeout(timeoutFinalizacion);
-                timeoutFinalizacion = null;
-            }
-
-            setEstadoBotonSincronizar(false);
-        }
-
-        function iniciarEsperaHastaFinalizacion() {
-            sincronizacionEnCurso = true;
-            esperandoFinalizacion = true;
-            setEstadoBotonSincronizar(true);
-
-            if (timeoutFinalizacion !== null) {
-                clearTimeout(timeoutFinalizacion);
-            }
-
-            timeoutFinalizacion = setTimeout(function () {
-                if (esperandoFinalizacion) {
-                    toastr.warning('La sincronización sigue en segundo plano. Puede reintentar en unos segundos.');
-                    finalizarEsperaSincronizacion();
-                }
-            }, 120000);
-        }
-
-        $(document).on('tracker:notificacion', function (_, notificacion) {
-            if (!esperandoFinalizacion || !notificacion) {
-                return;
-            }
-
-            var esMismoUsuario = !usuarioActual || !notificacion.usuario || notificacion.usuario === usuarioActual;
-            var esMensajeFin = (notificacion.mensaje || '').indexOf('Sincronización Finalizada') >= 0;
-
-            if (esMismoUsuario && esMensajeFin) {
-                finalizarEsperaSincronizacion();
-            }
-        });
 
         EnvioTablaInit(@Json.Serialize(@tokenSet), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.Pendiente), @Html.Raw((int)Tracker.Helpers.Constants.eEnviosEstados.ConError) );
         ChoferesInit(@Json.Serialize(@tokenSet));
@@ -265,7 +220,8 @@
                 send.listEnvios[i].fechaTurno = $('#FechaTurno').val();
             }
 
-            iniciarEsperaHastaFinalizacion();
+            sincronizacionEnCurso = true;
+            setEstadoBotonSincronizar(true);
 
             $.ajax({
                 type: "POST",
@@ -278,6 +234,8 @@
 
                 success: function (data) {
 
+                    
+
                     if (data.status === 0 || data.status === "OK") {
 
                         dataSet = [];
@@ -288,7 +246,6 @@
                         resetTransportista();
                     }
                     else {
-                        finalizarEsperaSincronizacion();
                         viewMessage(data);
                     }
 
@@ -297,7 +254,8 @@
 
                 },
                 error: function (e) {
-                    finalizarEsperaSincronizacion();
+                    sincronizacionEnCurso = false;
+                    setEstadoBotonSincronizar(false);
                     toastr.error(e.responseText);
                 }
             });
