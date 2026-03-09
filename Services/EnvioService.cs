@@ -246,8 +246,19 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             {
                 if (listEnvios != null && listEnvios.Count > 0)
                 {
-                    foreach (var item in listEnvios)
+                    var total = listEnvios.Count;
+                    var procesadosOk = 0;
+
+                    for (var index = 0; index < total; index++)
                     {
+                        var item = listEnvios[index];
+
+                        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                        {
+                            Mensaje = $"Sincronizando envío {index + 1}/{total}: Nº {item.Numero}.",
+                            Usuario = usuario.Nombre,
+                            TipoMensaje = eTipoMensaje.Ok
+                        }, cancellationToken: token);
 
                         var envioToSend = Mappers.MapTo(item);
 
@@ -256,8 +267,29 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                         envioToSend.Vehiculo = await scopedContext.Vehiculos.Include(i => i.Tipo).FirstOrDefaultAsync(x => x.Id == item.VehiculoId);
                         envioToSend.Chofer = await scopedContext.Choferes.FirstOrDefaultAsync(x => x.Id == item.ChoferId);
 
-                        await EnviarALogictrackerAsync(scopedContext, envioToSend, usuario);
+                        var result = await EnviarALogictrackerAsync(scopedContext, envioToSend, usuario);
+
+                        if (result.IsOk)
+                        {
+                            procesadosOk++;
+                        }
+                        else
+                        {
+                            await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                            {
+                                Mensaje = $"Error al sincronizar envío Nº {item.Numero}: {result.Value}",
+                                Usuario = usuario.Nombre,
+                                TipoMensaje = eTipoMensaje.Error
+                            }, cancellationToken: token);
+                        }
                     }
+
+                    await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                    {
+                        Mensaje = $"Resumen sincronización masiva: {procesadosOk}/{total} envíos procesados correctamente.",
+                        Usuario = usuario.Nombre,
+                        TipoMensaje = procesadosOk == total ? eTipoMensaje.Ok : eTipoMensaje.Warninig
+                    }, cancellationToken: token);
                 }
                 else
                 {
@@ -267,13 +299,20 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                     //envio.Vehiculo = await scopedContext.Vehiculos.Include(i => i.Tipo).FirstOrDefaultAsync(x => x.Id == envio.VehiculoId);
                     //envio.Chofer = await scopedContext.Choferes.FirstOrDefaultAsync(x => x.Id == envio.ChoferId);
 
+                    await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                    {
+                        Mensaje = $"Sincronizando envío Nº {envio?.Numero}.",
+                        Usuario = usuario.Nombre,
+                        TipoMensaje = eTipoMensaje.Ok
+                    }, cancellationToken: token);
+
                     await EnviarALogictrackerAsync(scopedContext, envio, usuario);
                 }
 
                 var notificacion = new NotificacionDTO()
                 {
                     Mensaje = $"Sincronización Finalizada. {DateTime.Now:dd/MM/yyyy HH:mm:ss} ",
-                    Usuario = "Tracker",
+                    Usuario = usuario.Nombre,
                     TipoMensaje = eTipoMensaje.Ok
                 };
 

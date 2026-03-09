@@ -26,6 +26,8 @@ $(function () {
     });
 
     connectionNotificacionHub.on("ReceiveNotificacion", function (notificacion) {
+        $(document).trigger('tracker:notificacion', [notificacion]);
+
         const fecha = new Date(notificacion.fecha).toLocaleString();
         const mensaje = notificacion.mensaje;
         const usuario = notificacion.usuario;
