@@ -164,7 +164,7 @@
 
         function setEstadoBotonSincronizar(enEspera) {
             var boton = $('#btnSincronizar');
-
+            
             if (enEspera) {
                 boton.prop('disabled', true)
                     .html("<i class='fas fa-sync-alt fa-spin'></i> Waiting...");
@@ -234,8 +234,7 @@
 
                 success: function (data) {
 
-                    sincronizacionEnCurso = false;
-                    setEstadoBotonSincronizar(false);
+                    
 
                     if (data.status === 0 || data.status === "OK") {
 
@@ -249,6 +248,9 @@
                     else {
                         viewMessage(data);
                     }
+
+                    sincronizacionEnCurso = false;
+                    setEstadoBotonSincronizar(false);
 
                 },
                 error: function (e) {
