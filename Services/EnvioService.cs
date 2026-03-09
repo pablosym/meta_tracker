@@ -994,52 +994,13 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                 // ---------------- TELEFONO ----------------
 
-                // buscamos afiliado + telefono para detectar conflictos
-                var telefonos = articulos
-                    .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
-                    .Select(a => new
-                    {
-                        Afiliado = a.CabeceraComprobantesAfiliado,
-                        Telefono = a.Telefono?.Trim(),
-                        a.ListaPrecio
-                    })
-                    .Distinct()
-                    .ToList();
-
-                string? telefono = null;
-
-                // CASO 1: telefono único
-                if (telefonos.Count == 1)
-                {
-                    telefono = telefonos[0].Telefono;
-                }
-                
-                // CASO 2: múltiples afiliados con teléfono
-                else if (telefonos.Count > 1)
-                {
-                    telefono = null;
-
-                    Error.WriteLog(
-                        $"ERROR TELEFONO MULTIPLE - Envio: {envio.Numero} Guia: {guia.Numero}"
-                    );
-
-                    // registramos todos los afiliados involucrados
-                    foreach (var tel in telefonos)
-                    {
-                        await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
-                        {
-                            NumGuia = guia.Numero,
-                            Cliente = guia.ClienteCodigo,
-                            Afiliado = tel.Afiliado,
-                            Listapre = tel.ListaPrecio,
-                            FechaRegistro = DateTime.Now,
-                            TelefonoEstado = "MULTIPLES_AFILIADOS_TELEFONO",
-                            UsuarioRegistra = usuario.Nombre
-                        });
-                    }
-
-                    await context.SaveChangesAsync();
-                }
+                var telefono = await ObtenerTelefonoClienteAsync(
+                    articulos,
+                    guia,
+                    context,
+                    usuario,
+                    envio.Numero
+                );
 
                 listClientes.Add(new ClienteWs
                 {
@@ -1143,5 +1104,50 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
             return MessageDTO.Error(ex.Message);
         }
+    }
+
+    private async Task<string?> ObtenerTelefonoClienteAsync(
+        IEnumerable<ArticuloDTO> articulos,
+        GuiaDTO guia,
+        Tracker_DevelContext context,
+        UsuarioDTO usuario,
+        int? envioNumero = null)
+    {
+        var telefonos = articulos
+            .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
+            .Select(a => new
+            {
+                Afiliado = a.CabeceraComprobantesAfiliado,
+                Telefono = a.Telefono?.Trim(),
+                a.ListaPrecio
+            })
+            .Distinct()
+            .ToList();
+
+        if (telefonos.Count == 1)
+            return telefonos[0].Telefono;
+
+        if (telefonos.Count > 1)
+        {
+            Error.WriteLog($"ERROR TELEFONO MULTIPLE - Envio: {envioNumero} Guia: {guia.Numero}");
+
+            foreach (var tel in telefonos)
+            {
+                await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
+                {
+                    NumGuia = guia.Numero,
+                    Cliente = guia.ClienteCodigo,
+                    Afiliado = tel.Afiliado,
+                    Listapre = tel.ListaPrecio,
+                    FechaRegistro = DateTime.Now,
+                    TelefonoEstado = "MULTIPLES_AFILIADOS_TELEFONO",
+                    UsuarioRegistra = usuario.Nombre
+                });
+            }
+
+            await context.SaveChangesAsync();
+        }
+
+        return null;
     }
 }
