@@ -10,4 +10,6 @@ public class TelefonoGuiaLogDTO
     public string Listapre { get; set; } = null!;
     public string? UsuarioRegistra { get; set; }
     public string? NombreAfiliado { get; set; } = string.Empty;
+
+    public string? TelefonoEstado { get; set; } = string.Empty;
 }

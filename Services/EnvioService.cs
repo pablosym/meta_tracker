@@ -77,11 +77,17 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
         return envioDTO;
     }
 
-    public async Task<IEnumerable<GuiaDTO>> ObtenerGuiasAsync(
-     FiltroEnvioDTO filtro,
-     string? usuario)
+    public async Task<IEnumerable<GuiaDTO>> ObtenerGuiasAsync(FiltroEnvioDTO filtro, string? usuario)
     {
-        var guias = await _context.GuiaDTO
+        return await ObtenerGuiasInternalAsync(_context, filtro, usuario);
+    }
+
+    private async Task<IEnumerable<GuiaDTO>> ObtenerGuiasInternalAsync(
+    Tracker_DevelContext context,
+    FiltroEnvioDTO filtro,
+    string? usuario)
+    {
+        return await context.GuiaDTO
             .FromSqlInterpolated($@"EXEC GuiasGet 
                                 @numeroEnvio = {filtro.Numero ?? 0},
                                 @numeroGuia = {filtro.GuiaNumero ?? 0},
@@ -89,40 +95,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                                 @skip = {filtro.Skip}")
             .AsNoTracking()
             .ToListAsync();
-
-        var numGuias = guias
-            .Select(g => g.Numero)
-            .Where(n => n > 0)
-            .Distinct()
-            .ToList();
-
-        if (numGuias.Count == 0)
-            return guias;
-
-        //try
-        //{
-        //    var telefonos = await GetTelefonosPorGuiaAsync(numGuias, usuario);
-
-        //    foreach (var g in guias)
-        //    {
-        //        if (telefonos.TryGetValue(g.Numero, out var tel) &&
-        //            !string.IsNullOrWhiteSpace(tel?.Telefono))
-        //        {
-        //            g.ClienteTelefono = tel.Telefono;
-        //            g.ClienteTelefonoOrigen = tel.OrigenDescripcion;
-        //        }
-        //    }
-        //}
-        //catch (Exception ex)
-        //{
-        //    Tracker.Helpers.Error.WriteLog(ex);
-        //}
-
-        return guias;
     }
-
-
-
 
     private async Task<List<ArticuloDTO>> ObtenerArticulosPorGuiaInternalAsync(    Tracker_DevelContext context,    FiltroEnvioDTO filtro,    string? usuario)
     {
@@ -459,7 +432,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     }
 
 
-    private async Task<MessageDTO> EnviarALogictrackerAsync(Tracker_DevelContext context, Envio? envio, UsuarioDTO usuario)
+    private async Task<MessageDTO> zEnviarALogictrackerAsync(Tracker_DevelContext context, Envio? envio, UsuarioDTO usuario)
     {
         try
         {
@@ -585,6 +558,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 //Ahora los telefonos estan aca.
                 var articulos = await ObtenerArticulosPorGuiaAsync(filtro, usuario.Nombre) ?? new List<ArticuloDTO>();
 
+
                 // === Consolidación: un Remito por NumeroComprobante con N Insumos (sumados por ArticuloCodigo) ===
                 var listRemitos = articulos
                     // Si NumeroComprobante es long? => coalesco a 0L para la clave
@@ -621,10 +595,13 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 );
 
 
-                var telefono = guia.ClienteTelefono?.Trim();
+                // Detecta si hay múltiples teléfonos distintos
+                var telefono = articulos
+                    .Select(a => a.Telefono)
+                    .Where(t => !string.IsNullOrWhiteSpace(t) && t != "ERROR")
+                    .Distinct()
+                    .SingleOrDefault();
 
-                if (string.Equals(telefono, "ERROR", StringComparison.OrdinalIgnoreCase))
-                    telefono = string.Empty;
 
                 listClientes.Add(new ClienteWs
                 {
@@ -783,6 +760,9 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
 
 
+
+
+
     public async Task<MessageDTO> GuardarAsync(EnvioDTO envioDTO, int usuarioId)
     {
         if (envioDTO == null)
@@ -834,4 +814,334 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             .ToListAsync();
     }
 
+
+
+    private async Task<MessageDTO> EnviarALogictrackerAsync(Tracker_DevelContext context, Envio? envio, UsuarioDTO usuario)
+    {
+        try
+        {
+            if (envio == null)
+                return MessageDTO.Error("El envio es un dato obligatorio");
+
+            var wsSetting = _configuration.GetSection("Servicio").Get<WSSettingDTO>();
+            if (wsSetting == null)
+                return MessageDTO.Error("El servicio sin configuracion revise el appsetting");
+
+            string url = wsSetting.URL ?? string.Empty;
+            string prefijoTest = string.Empty;
+
+            if (wsSetting.EntornoPruebas?.Activo ?? false)
+            {
+                url = wsSetting.EntornoPruebas.URL;
+                prefijoTest = wsSetting.EntornoPruebas.Prefijo;
+            }
+
+            using var client = new CrearDistribucionConEntidadesSoapClient(
+                CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap, url);
+
+            // Logging SOAP si está habilitado
+            var logCfg = _configuration.GetSection("SoapLogging").Get<SoapLoggingOptions>() ?? new();
+
+            if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
+                client.Endpoint.EndpointBehaviors.Add(new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path));
+
+            var request = new DistribucionConEntidadesWs
+            {
+                Empresa = wsSetting.Empresa,
+                BaseOperativa = wsSetting.BaseOperativa,
+                FechaInicio = envio.FechaInicio ?? DateTime.Now,
+                FechaTurno = envio.FechaTurno ?? DateTime.Now,
+            };
+
+            //
+            // Ahora el codigo de viaje es unico (es la ruta sino no envian el mensaje x WhatsApp)
+            //
+            if (!envio.CodigoViaje.HasValue)
+                envio.CodigoViaje = Guid.NewGuid();
+
+            //Le quito los - para que formen un numero largo de 32 caracteres
+            request.CodigoViaje = envio.CodigoViaje?.ToString("N");
+
+            // ---------------- TRANSPORTISTA ----------------
+
+            if (envio.TransportistaDestino == null)
+            {
+                request.Transportista = new TransportistaWs
+                {
+                    Codigo = (envio?.Transportista?.Codigo != null)
+                        ? string.Concat(prefijoTest, envio.Transportista.Codigo.ToString())
+                        : "0",
+                    Descripcion = (envio?.Transportista?.Nombre != null)
+                        ? string.Concat(prefijoTest, envio.Transportista.Nombre)
+                        : string.Empty,
+                    Coordenadas = envio?.Transportista?.Coordenadas
+                };
+            }
+            else
+            {
+                request.Transportista = new TransportistaWs
+                {
+                    Codigo = (envio?.TransportistaDestino?.Codigo != null)
+                        ? string.Concat(prefijoTest, envio.TransportistaDestino.Codigo.ToString())
+                        : "0",
+                    Descripcion = string.Concat(prefijoTest, envio?.TransportistaDestino?.Nombre ?? string.Empty),
+                    Coordenadas = envio?.TransportistaDestino?.Coordenadas
+                };
+            }
+
+            // ---------------- CHOFER ----------------
+
+            request.Chofer = new ChoferWs
+            {
+                Descripcion = string.Concat(prefijoTest, envio?.Chofer?.ApellidoNombre ?? string.Empty),
+                Legajo = envio?.Chofer?.Legajo ?? string.Empty,
+                Telefono = envio?.Chofer?.Telefono ?? string.Empty
+            };
+
+            // ---------------- VEHICULO ----------------
+
+            request.Vehiculo = new VehiculoWs
+            {
+                Patente = envio?.Vehiculo?.Patente ?? string.Empty,
+                TipoVehiculo = new TipoVehiculoWs
+                {
+                    Codigo = envio?.Vehiculo?.Tipo?.Codigo ?? string.Empty,
+                    Descripcion = envio?.Vehiculo?.Tipo?.Descripcion ?? string.Empty
+                }
+            };
+
+            // ---------------- OBTENER GUIAS ----------------
+
+            long? nroGuia = 0L;
+
+            if (envio?.Guias != null && envio.Guias.Count == 1)
+                nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
+
+            var filtro = new FiltroEnvioDTO
+            {
+                Numero = envio?.Numero,
+                GuiaNumero = nroGuia,
+                PageSize = int.MaxValue,
+                Skip = 0
+            };
+
+            var listGuias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
+
+            if (!listGuias.Any())
+                return MessageDTO.Error("No se encontraron guías para el envío.");
+
+            // -----------------------------------------------------------
+            // Traemos TODOS los artículos de todas las guías en una sola pasada
+            // evitando ejecutar GetArticulosPorGuia por cada guía
+            // -----------------------------------------------------------
+
+            var articulosPorGuia = new Dictionary<long, List<ArticuloDTO>>();
+
+            foreach (var guia in listGuias)
+            {
+                filtro.Numero = guia.Numero;
+
+                var arts = await ObtenerArticulosPorGuiaInternalAsync(context, filtro, usuario.Nombre);
+
+                articulosPorGuia[guia.Numero] = arts;
+            }
+
+            var notificacion = new NotificacionDTO();
+
+            envio!.Estado = null;
+            envio.EstadoId = (int)eEnviosEstados.Correcto;
+
+            // ---------------- PROCESAR GUIAS ----------------
+
+            foreach (var guia in listGuias)
+            {
+                var listClientes = new List<ClienteWs>();
+
+                var articulos = articulosPorGuia.TryGetValue(guia.Numero, out var arts)
+                    ? arts
+                    : new List<ArticuloDTO>();
+
+                // ---------------- REMITOS ----------------
+
+                var listRemitos = articulos
+                    .GroupBy(a => a.NumeroComprobante)
+                    .Select(groupRemito =>
+                    {
+                        var insumos = groupRemito
+                            .GroupBy(a => a.ArticuloCodigo)
+                            .Select(gInsumo => new InsumoCompletoWs
+                            {
+                                Codigo = gInsumo.Key.ToString(),
+                                Descripcion = string.Concat(prefijoTest, gInsumo.First().ArticuloDescripcion ?? string.Empty),
+                                Cantidad = gInsumo.Sum(x => (int)x.CantidadSolicitada)
+                            })
+                            .ToArray();
+
+                        return new RemitoCompletoWs
+                        {
+                            Codigo = groupRemito.Key.ToString(CultureInfo.InvariantCulture),
+                            Insumos = insumos
+                        };
+                    })
+                    .ToList();
+                
+                // Descripcion: {prefijo}{ClienteNombre} – {ClienteAfiliado} (si hay afiliado)
+                var descripcionCliente = string.Concat(
+                    prefijoTest,
+                    guia.ClienteNombre ?? string.Empty,
+                    string.IsNullOrWhiteSpace(guia.ClienteAfiliado) ? string.Empty : string.Concat("–", guia.AfiliadoNombre)
+                );
+
+                // ---------------- TELEFONO ----------------
+
+                // buscamos afiliado + telefono para detectar conflictos
+                var telefonos = articulos
+                    .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
+                    .Select(a => new
+                    {
+                        Afiliado = a.CabeceraComprobantesAfiliado,
+                        Telefono = a.Telefono?.Trim(),
+                        a.ListaPrecio
+                    })
+                    .Distinct()
+                    .ToList();
+
+                string? telefono = null;
+
+                // CASO 1: telefono único
+                if (telefonos.Count == 1)
+                {
+                    telefono = telefonos[0].Telefono;
+                }
+                
+                // CASO 2: múltiples afiliados con teléfono
+                else if (telefonos.Count > 1)
+                {
+                    telefono = null;
+
+                    Error.WriteLog(
+                        $"ERROR TELEFONO MULTIPLE - Envio: {envio.Numero} Guia: {guia.Numero}"
+                    );
+
+                    // registramos todos los afiliados involucrados
+                    foreach (var tel in telefonos)
+                    {
+                        await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
+                        {
+                            NumGuia = guia.Numero,
+                            Cliente = guia.ClienteCodigo,
+                            Afiliado = tel.Afiliado,
+                            Listapre = tel.ListaPrecio,
+                            FechaRegistro = DateTime.Now,
+                            TelefonoEstado = "MULTIPLES_AFILIADOS_TELEFONO",
+                            UsuarioRegistra = usuario.Nombre
+                        });
+                    }
+
+                    await context.SaveChangesAsync();
+                }
+
+                listClientes.Add(new ClienteWs
+                {
+                    Codigo = guia.ClienteAfiliado,
+                    Descripcion = descripcionCliente,
+                    Coordenadas = envio.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
+                    Direccion = envio.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
+                    Telefono = telefono,
+                    Remitos = listRemitos.ToArray()
+                });
+
+                request.Clientes = listClientes.ToArray();
+
+                string guiaEstado = string.Empty;
+
+                var guiaToBBDD = new EnvioGuia
+                {
+                    Fecha = guia.Fecha,
+                    Numero = guia.Numero
+                };
+
+                GenericResponse resp;
+
+                if (!wsSetting.Activo) // bypass WS
+                {
+                    resp = new GenericResponse { Codigo = 200 };
+                }
+                else
+                {
+                    // Logging por guía si aplica
+                    if (logCfg.Enabled && logCfg.ToFile)
+                    {
+                        using (SoapLogContext.UseGuia(guia.Numero.ToString()))
+                        {
+                            var result = await client.CreateDistribucionConEntidadesAsync(request);
+                            resp = result.Body.CreateDistribucionConEntidadesResult;
+                        }
+                    }
+                    else
+                    {
+                        var result = await client.CreateDistribucionConEntidadesAsync(request);
+                        resp = result.Body.CreateDistribucionConEntidadesResult;
+                    }
+                }
+
+                // ---------------- RESPUESTA WS ----------------
+
+                if (resp.Codigo == 200)
+                {
+                    guiaToBBDD.EstadoId = (int)eEnviosEstados.Correcto;
+
+                    var envioAudit = new EnvioAudit
+                    {
+                        Envio = envio.Numero,
+                        EstadoId = (int)eEnviosEstados.Correcto,
+                        Fecha = DateTime.Now,
+                        Guia = guia.Numero,
+                        Usuario = usuario.Nombre,
+                        Direccion = envio.TransportistaDestino?.Direccion,
+                        CodigoViaje = envio.CodigoViaje
+                    };
+
+                    await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
+                }
+                else
+                {
+                    guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
+                    envio.EstadoId = (int)eEnviosEstados.ConError;
+
+                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envio.Numero} Guia: {guia.Numero}");
+                }
+
+                envio.Guias.Add(guiaToBBDD);
+            }
+
+            envio.FechaUltimoMov = DateTime.Now;
+            envio.UsuarioUltimoMovId = usuario.Id;
+
+            if (envio.UsuarioId == 0)
+                envio.UsuarioId = usuario.Id;
+
+            envio.Transportista = null;
+            envio.Chofer = null;
+            envio.Vehiculo = null;
+            envio.Estado = null;
+
+            context.Envios.Update(envio);
+            await context.SaveChangesAsync();
+
+            return MessageDTO.Ok("Envío sincronizado con éxito.");
+        }
+        catch (Exception ex)
+        {
+            await _notificationHubContext.Clients.Group("Notificacion")
+                .SendAsync("ReceiveNotificacion", new NotificacionDTO
+                {
+                    Mensaje = $"<span class='text-red'> ERROR {ex.Message} </span>",
+                    Usuario = usuario.Nombre,
+                    TipoMensaje = eTipoMensaje.Error
+                });
+
+            return MessageDTO.Error(ex.Message);
+        }
+    }
 }
