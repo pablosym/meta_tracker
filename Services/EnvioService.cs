@@ -312,7 +312,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 var notificacion = new NotificacionDTO()
                 {
                     Mensaje = $"Sincronización Finalizada. {DateTime.Now:dd/MM/yyyy HH:mm:ss} ",
-                    Usuario = "Tracker",
+                    Usuario = usuario.Nombre,
                     TipoMensaje = eTipoMensaje.Ok
                 };
 
