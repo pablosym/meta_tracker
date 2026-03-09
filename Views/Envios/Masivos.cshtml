@@ -292,6 +292,9 @@
                         viewMessage(data);
                     }
 
+                    sincronizacionEnCurso = false;
+                    setEstadoBotonSincronizar(false);
+
                 },
                 error: function (e) {
                     finalizarEsperaSincronizacion();
