@@ -3,14 +3,14 @@
 public class BackgroundQueueService : BackgroundService
 {
     private readonly IBackgroundTaskQueue _queue;
-    private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly ILogger<BackgroundQueueService> _logger;
 
     public BackgroundQueueService(
         IBackgroundTaskQueue queue,
-        IServiceScopeFactory serviceScopeFactory)
+        ILogger<BackgroundQueueService> logger)
     {
         _queue = queue;
-        _serviceScopeFactory = serviceScopeFactory;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,9 +32,7 @@ public class BackgroundQueueService : BackgroundService
             }
             catch (Exception ex)
             {
-                // Si hay otro tipo de error al hacer Dequeue, lo logueás
-                // y seguís o rompés según tu criterio.
-                // _logger.LogError(ex, "Error en DequeueAsync de BackgroundTaskQueue.");
+                _logger.LogError(ex, "Error en DequeueAsync de BackgroundTaskQueue.");
                 continue;
             }
 
@@ -53,8 +51,7 @@ public class BackgroundQueueService : BackgroundService
             }
             catch (Exception ex)
             {
-                // Loguear errores de la tarea en sí
-                // _logger.LogError(ex, "Error ejecutando trabajo en background.");
+                _logger.LogError(ex, "Error ejecutando trabajo en background.");
             }
         }
     }
