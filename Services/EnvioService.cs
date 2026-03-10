@@ -35,6 +35,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     IEnvioAuditService envioAuditService,
     ILogger<EnvioService> logger) : IEnvioService
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<long, byte> _syncInProgress = new();
     private readonly Tracker_DevelContext _context = context;
     private readonly IConfiguration _configuration = configuration;
     private readonly IHubContext<NotificacionHub> _notificationHubContext = notificationHubContext;
@@ -224,8 +225,13 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
         return guia;
     }
 
-    public Task<MessageDTO> SincronizarAsync(Envio? envio, List<EnvioDTO>? listEnvios, UsuarioDTO usuario)
+    public async Task<MessageDTO> SincronizarAsync(Envio? envio, List<EnvioDTO>? listEnvios, UsuarioDTO usuario)
     {
+        if (usuario == null || string.IsNullOrWhiteSpace(usuario.Nombre))
+            return MessageDTO.Error("El usuario es obligatorio para sincronizar.");
+
+        if (listEnvios == null && envio == null)
+            return MessageDTO.Error("Debe informar un envío o una lista de envíos para sincronizar.");
 
         var notificacion = new NotificacionDTO()
         {
@@ -234,7 +240,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             TipoMensaje = eTipoMensaje.Ok
         };
 
-        _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", notificacion);
+        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", notificacion);
 
         _backgroundTaskQueue.QueueBackgroundWorkItem(async token =>
         {
@@ -293,20 +299,48 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 }
                 else
                 {
-
-                    //envio.Transportista = await scopedContext.vwTransportistas.FirstOrDefaultAsync(x => x.Codigo == envio.TransportistaCodigo);
-                    //envio.TransportistaDestino = await scopedContext.vwTransportistas.FirstOrDefaultAsync(x => x.Codigo == envio.TransportistaDestinoCodigo);
-                    //envio.Vehiculo = await scopedContext.Vehiculos.Include(i => i.Tipo).FirstOrDefaultAsync(x => x.Id == envio.VehiculoId);
-                    //envio.Chofer = await scopedContext.Choferes.FirstOrDefaultAsync(x => x.Id == envio.ChoferId);
-
-                    await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                    if (envio is null)
                     {
-                        Mensaje = $"Sincronizando envío Nº {envio?.Numero}.",
-                        Usuario = usuario.Nombre,
-                        TipoMensaje = eTipoMensaje.Ok
-                    }, cancellationToken: token);
+                        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                        {
+                            Mensaje = "No se pudo sincronizar: envío nulo.",
+                            Usuario = usuario.Nombre,
+                            TipoMensaje = eTipoMensaje.Error
+                        }, cancellationToken: token);
+                        return;
+                    }
 
-                    await EnviarALogictrackerAsync(scopedContext, envio, usuario);
+                    if (!_syncInProgress.TryAdd(envio.Numero, 0))
+                    {
+                        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                        {
+                            Mensaje = $"El envío Nº {envio.Numero} ya está en proceso de sincronización.",
+                            Usuario = usuario.Nombre,
+                            TipoMensaje = eTipoMensaje.Warninig
+                        }, cancellationToken: token);
+                        return;
+                    }
+
+                    try
+                    {
+                        //envio.Transportista = await scopedContext.vwTransportistas.FirstOrDefaultAsync(x => x.Codigo == envio.TransportistaCodigo);
+                        //envio.TransportistaDestino = await scopedContext.vwTransportistas.FirstOrDefaultAsync(x => x.Codigo == envio.TransportistaDestinoCodigo);
+                        //envio.Vehiculo = await scopedContext.Vehiculos.Include(i => i.Tipo).FirstOrDefaultAsync(x => x.Id == envio.VehiculoId);
+                        //envio.Chofer = await scopedContext.Choferes.FirstOrDefaultAsync(x => x.Id == envio.ChoferId);
+
+                        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                        {
+                            Mensaje = $"Sincronizando envío Nº {envio.Numero}.",
+                            Usuario = usuario.Nombre,
+                            TipoMensaje = eTipoMensaje.Ok
+                        }, cancellationToken: token);
+
+                        await EnviarALogictrackerAsync(scopedContext, envio, usuario);
+                    }
+                    finally
+                    {
+                        _syncInProgress.TryRemove(envio.Numero, out _);
+                    }
                 }
 
                 var notificacion = new NotificacionDTO()
@@ -329,7 +363,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
 
 
-        return Task.FromResult(MessageDTO.Ok("Se inició la sincronización en segundo plano."));
+        return MessageDTO.Ok("Se inició la sincronización en segundo plano.");
     }
 
     //este se muere si le mandas 165 guias.
@@ -584,8 +618,9 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             var notificacion = new NotificacionDTO();
 
             // Estado por defecto OK (se ajusta si hay error)
-            envio!.Estado = null;
-            envio.EstadoId = (int)eEnviosEstados.Correcto;
+            var envioSafe = envio;
+            envioSafe.Estado = null;
+            envioSafe.EstadoId = (int)eEnviosEstados.Correcto;
 
             foreach (var guia in listGuias)
             {
@@ -635,19 +670,22 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
 
                 // Detecta si hay múltiples teléfonos distintos
-                var telefono = articulos
+                var telefonos = articulos
                     .Select(a => a.Telefono)
                     .Where(t => !string.IsNullOrWhiteSpace(t) && t != "ERROR")
                     .Distinct()
-                    .SingleOrDefault();
+                    .Take(2)
+                    .ToList();
+
+                var telefono = telefonos.Count == 1 ? telefonos[0] : null;
 
 
                 listClientes.Add(new ClienteWs
                 {
                     Codigo = guia.ClienteAfiliado,
                     Descripcion = descripcionCliente,
-                    Coordenadas = envio.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
-                    Direccion = envio.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
+                    Coordenadas = envioSafe.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
+                    Direccion = envioSafe.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
                     Telefono = telefono,
                     Remitos = listRemitos.ToArray()
                 });
@@ -694,13 +732,13 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                     var envioAudit = new EnvioAudit
                     {
-                        Envio = envio.Numero,
+                        Envio = envioSafe.Numero,
                         EstadoId = (int)eEnviosEstados.Correcto,
                         Fecha = DateTime.Now,
                         Guia = guia.Numero,
                         Usuario = usuario.Nombre,
-                        Direccion = envio.TransportistaDestino?.Direccion,
-                        CodigoViaje = envio.CodigoViaje
+                        Direccion = envioSafe.TransportistaDestino?.Direccion,
+                        CodigoViaje = envioSafe.CodigoViaje
                     };
 
                     await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
@@ -718,24 +756,24 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 else
                 {
                     guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
-                    envio.EstadoId = (int)eEnviosEstados.ConError;
+                    envioSafe.EstadoId = (int)eEnviosEstados.ConError;
 
                     guiaEstado = $"<span class='text-red'> E R R O R  {resp.Codigo} - {resp.Mensaje} <small> {DateTime.Now}</small>  </span>";
 
-                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envio.Numero} Guia: {guia.Numero} ");
+                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envioSafe.Numero} Guia: {guia.Numero} ");
 
                     // A veces LT manda error por su propio log.txt; lo ignoramos
                     if (resp.Mensaje.IndexOf("log.txt", StringComparison.OrdinalIgnoreCase) <= 0)
                     {
                         var envioAudit = new EnvioAudit
                         {
-                            Envio = envio.Numero,
+                            Envio = envioSafe.Numero,
                             EstadoId = (int)eEnviosEstados.ConError,
                             Fecha = DateTime.Now,
                             Guia = guia.Numero,
                             Usuario = usuario.Nombre,
                             Observacion = guiaEstado,
-                            CodigoViaje = envio.CodigoViaje
+                            CodigoViaje = envioSafe.CodigoViaje
                         };
 
                         await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
@@ -752,22 +790,22 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                     }
                 }
 
-                envio.Guias.Add(guiaToBBDD);
+                envioSafe.Guias.Add(guiaToBBDD);
             }
 
-            envio.FechaUltimoMov = DateTime.Now;
-            envio.UsuarioUltimoMovId = usuario.Id;
+            envioSafe.FechaUltimoMov = DateTime.Now;
+            envioSafe.UsuarioUltimoMovId = usuario.Id;
 
-            if (envio.UsuarioId == 0)
-                envio.UsuarioId = usuario.Id;
+            if (envioSafe.UsuarioId == 0)
+                envioSafe.UsuarioId = usuario.Id;
 
-            envio.Transportista = null;
-            envio.Chofer = null;
-            envio.Vehiculo = null;
-            envio.Estado = null;
-            envio.EstadoId = (int)eEnviosEstados.Correcto;
+            envioSafe.Transportista = null;
+            envioSafe.Chofer = null;
+            envioSafe.Vehiculo = null;
+            envioSafe.Estado = null;
+            envioSafe.EstadoId = (int)eEnviosEstados.Correcto;
 
-            context.Envios.Update(envio);
+            context.Envios.Update(envioSafe);
             await context.SaveChangesAsync();
 
             notificacion = new NotificacionDTO
@@ -987,8 +1025,9 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
             var notificacion = new NotificacionDTO();
 
-            envio!.Estado = null;
-            envio.EstadoId = (int)eEnviosEstados.Correcto;
+            var envioSafe = envio;
+            envioSafe.Estado = null;
+            envioSafe.EstadoId = (int)eEnviosEstados.Correcto;
 
             // ---------------- PROCESAR GUIAS ----------------
 
@@ -1038,15 +1077,15 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                     guia,
                     context,
                     usuario,
-                    envio.Numero
+                    envioSafe.Numero
                 );
 
                 listClientes.Add(new ClienteWs
                 {
                     Codigo = guia.ClienteAfiliado,
                     Descripcion = descripcionCliente,
-                    Coordenadas = envio.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
-                    Direccion = envio.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
+                    Coordenadas = envioSafe.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
+                    Direccion = envioSafe.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
                     Telefono = telefono,
                     Remitos = listRemitos.ToArray()
                 });
@@ -1093,13 +1132,13 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                     var envioAudit = new EnvioAudit
                     {
-                        Envio = envio.Numero,
+                        Envio = envioSafe.Numero,
                         EstadoId = (int)eEnviosEstados.Correcto,
                         Fecha = DateTime.Now,
                         Guia = guia.Numero,
                         Usuario = usuario.Nombre,
-                        Direccion = envio.TransportistaDestino?.Direccion,
-                        CodigoViaje = envio.CodigoViaje
+                        Direccion = envioSafe.TransportistaDestino?.Direccion,
+                        CodigoViaje = envioSafe.CodigoViaje
                     };
 
                     await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
@@ -1107,26 +1146,26 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 else
                 {
                     guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
-                    envio.EstadoId = (int)eEnviosEstados.ConError;
+                    envioSafe.EstadoId = (int)eEnviosEstados.ConError;
 
-                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envio.Numero} Guia: {guia.Numero}");
+                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envioSafe.Numero} Guia: {guia.Numero}");
                 }
 
-                envio.Guias.Add(guiaToBBDD);
+                envioSafe.Guias.Add(guiaToBBDD);
             }
 
-            envio.FechaUltimoMov = DateTime.Now;
-            envio.UsuarioUltimoMovId = usuario.Id;
+            envioSafe.FechaUltimoMov = DateTime.Now;
+            envioSafe.UsuarioUltimoMovId = usuario.Id;
 
-            if (envio.UsuarioId == 0)
-                envio.UsuarioId = usuario.Id;
+            if (envioSafe.UsuarioId == 0)
+                envioSafe.UsuarioId = usuario.Id;
 
-            envio.Transportista = null;
-            envio.Chofer = null;
-            envio.Vehiculo = null;
-            envio.Estado = null;
+            envioSafe.Transportista = null;
+            envioSafe.Chofer = null;
+            envioSafe.Vehiculo = null;
+            envioSafe.Estado = null;
 
-            context.Envios.Update(envio);
+            context.Envios.Update(envioSafe);
             await context.SaveChangesAsync();
 
             return MessageDTO.Ok("Envío sincronizado con éxito.");
