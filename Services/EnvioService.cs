@@ -906,6 +906,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
             string url = wsSetting.URL ?? string.Empty;
             string prefijoTest = string.Empty;
+            var servicioActivo = wsSetting.Activo;
 
             if (wsSetting.EntornoPruebas?.Activo ?? false)
             {
@@ -913,14 +914,19 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 prefijoTest = wsSetting.EntornoPruebas.Prefijo;
             }
 
-            using var client = new CrearDistribucionConEntidadesSoapClient(
-                CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap, url);
+            CrearDistribucionConEntidadesSoapClient? client = null;
 
             // Logging SOAP si está habilitado
             var logCfg = _configuration.GetSection("SoapLogging").Get<SoapLoggingOptions>() ?? new();
 
-            if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
-                client.Endpoint.EndpointBehaviors.Add(new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path));
+            if (servicioActivo)
+            {
+                client = new CrearDistribucionConEntidadesSoapClient(
+                    CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap, url);
+
+                if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
+                    client.Endpoint.EndpointBehaviors.Add(new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path));
+            }
 
             var request = new DistribucionConEntidadesWs
             {
@@ -1110,7 +1116,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 {
                     GenericResponse resp;
 
-                    if (!wsSetting.Activo) // bypass WS
+                    if (!servicioActivo || client == null) // bypass WS
                     {
                         resp = new GenericResponse { Codigo = 200 };
                     }
@@ -1217,42 +1223,73 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     {
         var telefonos = articulos
             .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
-            .Select(a => new
-            {
-                Afiliado = a.CabeceraComprobantesAfiliado,
-                Telefono = a.Telefono?.Trim(),
-                a.ListaPrecio
-            })
+            .Select(a => new TelefonoClienteItem(
+                a.CabeceraComprobantesAfiliado,
+                a.Telefono?.Trim(),
+                a.ListaPrecio))
             .Distinct()
             .ToList();
 
         if (telefonos.Count == 1)
+        {
+            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "UNICO_AFILIADO_TELEFONO");
             return new TelefonoGuiaAuditInfo(telefonos[0].Telefono, "UNICO_AFILIADO_TELEFONO");
+        }
 
         if (telefonos.Count > 1)
         {
             Error.WriteLog($"ERROR TELEFONO MULTIPLE - Envio: {envioNumero} Guia: {guia.Numero}");
 
-            foreach (var tel in telefonos)
-            {
-                await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
-                {
-                    NumGuia = guia.Numero,
-                    Cliente = guia.ClienteCodigo,
-                    Afiliado = tel.Afiliado,
-                    Listapre = tel.ListaPrecio,
-                    FechaRegistro = DateTime.Now,
-                    TelefonoEstado = "MULTIPLES_AFILIADOS_TELEFONO",
-                    UsuarioRegistra = usuario.Nombre
-                });
-            }
-
-            await context.SaveChangesAsync();
+            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "MULTIPLES_AFILIADOS_TELEFONO");
 
             return new TelefonoGuiaAuditInfo(null, "MULTIPLES_AFILIADOS_TELEFONO");
         }
 
+        await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "SIN_TELEFONO");
         return new TelefonoGuiaAuditInfo(null, "SIN_TELEFONO");
+    }
+
+    private async Task RegistrarTelefonosGuiasLogAsync(
+        Tracker_DevelContext context,
+        GuiaDTO guia,
+        UsuarioDTO usuario,
+        IEnumerable<TelefonoClienteItem> telefonos,
+        string telefonoEstado)
+    {
+        var telefonosList = telefonos?.ToList() ?? [];
+
+        if (telefonosList.Count == 0)
+        {
+            await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
+            {
+                NumGuia = guia.Numero,
+                Cliente = guia.ClienteCodigo,
+                Afiliado = 0,
+                Listapre = string.Empty,
+                FechaRegistro = DateTime.Now,
+                TelefonoEstado = telefonoEstado,
+                UsuarioRegistra = usuario.Nombre
+            });
+
+            await context.SaveChangesAsync();
+            return;
+        }
+
+        foreach (var tel in telefonosList)
+        {
+            await context.TelefonosGuiasLog.AddAsync(new TelefonoGuiaLog
+            {
+                NumGuia = guia.Numero,
+                Cliente = guia.ClienteCodigo,
+                Afiliado = tel.Afiliado,
+                Listapre = tel.ListaPrecio,
+                FechaRegistro = DateTime.Now,
+                TelefonoEstado = telefonoEstado,
+                UsuarioRegistra = usuario.Nombre
+            });
+        }
+
+        await context.SaveChangesAsync();
     }
 
     private async Task RegistrarAuditoriaGuiaAsync(
@@ -1282,4 +1319,6 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     }
 
     private readonly record struct TelefonoGuiaAuditInfo(string? Telefono, string Estado);
+
+    private readonly record struct TelefonoClienteItem(long Afiliado, string? Telefono, string ListaPrecio);
 }
