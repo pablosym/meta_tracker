@@ -1169,6 +1169,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                 envioSafe.FechaUltimoMov = DateTime.Now;
                 envioSafe.UsuarioUltimoMovId = usuario.Id;
+                envioSafe.UsuarioId = usuario.Id;
 
                 context.Envios.Update(envioSafe);
                 await context.SaveChangesAsync();
