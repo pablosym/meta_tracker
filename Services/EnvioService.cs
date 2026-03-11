@@ -1023,11 +1023,16 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                 articulosPorGuia[guia.Numero] = arts;
             }
 
-            var notificacion = new NotificacionDTO();
-
             var envioSafe = envio;
             envioSafe.Estado = null;
             envioSafe.EstadoId = (int)eEnviosEstados.Correcto;
+
+            var guiasNumero = listGuias.Select(g => g.Numero).Distinct().ToList();
+            var guiasPersistidas = await context.EnviosGuias
+                .Where(g => g.EnvioId == envioSafe.Id && guiasNumero.Contains(g.Numero))
+                .ToDictionaryAsync(g => g.Numero);
+
+            var huboErrores = false;
 
             // ---------------- PROCESAR GUIAS ----------------
 
@@ -1092,70 +1097,96 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                 request.Clientes = listClientes.ToArray();
 
-                string guiaEstado = string.Empty;
-
-                var guiaToBBDD = new EnvioGuia
-                {
-                    Fecha = guia.Fecha,
-                    Numero = guia.Numero
-                };
-
-                GenericResponse resp;
-
-                if (!wsSetting.Activo) // bypass WS
-                {
-                    resp = new GenericResponse { Codigo = 200 };
-                }
-                else
-                {
-                    // Logging por guía si aplica
-                    if (logCfg.Enabled && logCfg.ToFile)
+                var guiaToBBDD = guiasPersistidas.TryGetValue(guia.Numero, out var guiaExistente)
+                    ? guiaExistente
+                    : new EnvioGuia
                     {
-                        using (SoapLogContext.UseGuia(guia.Numero.ToString()))
+                        EnvioId = envioSafe.Id,
+                        Fecha = guia.Fecha,
+                        Numero = guia.Numero
+                    };
+
+                try
+                {
+                    GenericResponse resp;
+
+                    if (!wsSetting.Activo) // bypass WS
+                    {
+                        resp = new GenericResponse { Codigo = 200 };
+                    }
+                    else
+                    {
+                        // Logging por guía si aplica
+                        if (logCfg.Enabled && logCfg.ToFile)
+                        {
+                            using (SoapLogContext.UseGuia(guia.Numero.ToString()))
+                            {
+                                var result = await client.CreateDistribucionConEntidadesAsync(request);
+                                resp = result.Body.CreateDistribucionConEntidadesResult;
+                            }
+                        }
+                        else
                         {
                             var result = await client.CreateDistribucionConEntidadesAsync(request);
                             resp = result.Body.CreateDistribucionConEntidadesResult;
                         }
                     }
+
+                    if (resp.Codigo == 200)
+                    {
+                        guiaToBBDD.EstadoId = (int)eEnviosEstados.Correcto;
+
+                        var envioAudit = new EnvioAudit
+                        {
+                            Envio = envioSafe.Numero,
+                            EstadoId = (int)eEnviosEstados.Correcto,
+                            Fecha = DateTime.Now,
+                            Guia = guia.Numero,
+                            Usuario = usuario.Nombre,
+                            Direccion = envioSafe.TransportistaDestino?.Direccion,
+                            CodigoViaje = envioSafe.CodigoViaje
+                        };
+
+                        await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
+                    }
                     else
                     {
-                        var result = await client.CreateDistribucionConEntidadesAsync(request);
-                        resp = result.Body.CreateDistribucionConEntidadesResult;
+                        huboErrores = true;
+                        guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
+
+                        Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envioSafe.Numero} Guia: {guia.Numero}");
                     }
                 }
-
-                // ---------------- RESPUESTA WS ----------------
-
-                if (resp.Codigo == 200)
+                catch (Exception exGuia)
                 {
-                    guiaToBBDD.EstadoId = (int)eEnviosEstados.Correcto;
-
-                    var envioAudit = new EnvioAudit
-                    {
-                        Envio = envioSafe.Numero,
-                        EstadoId = (int)eEnviosEstados.Correcto,
-                        Fecha = DateTime.Now,
-                        Guia = guia.Numero,
-                        Usuario = usuario.Nombre,
-                        Direccion = envioSafe.TransportistaDestino?.Direccion,
-                        CodigoViaje = envioSafe.CodigoViaje
-                    };
-
-                    await _envioAuditService.AuditarEnvioAsync(context, envioAudit);
-                }
-                else
-                {
+                    huboErrores = true;
                     guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
-                    envioSafe.EstadoId = (int)eEnviosEstados.ConError;
 
-                    Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envioSafe.Numero} Guia: {guia.Numero}");
+                    Error.WriteLog($"ERROR EXCEPCION LT Envio: {envioSafe.Numero} Guia: {guia.Numero} - {exGuia.Message}");
                 }
 
-                envioSafe.Guias.Add(guiaToBBDD);
+                if (guiaExistente == null)
+                {
+                    await context.EnviosGuias.AddAsync(guiaToBBDD);
+                    guiasPersistidas[guia.Numero] = guiaToBBDD;
+                }
+
+                envioSafe.EstadoId = huboErrores
+                    ? (int)eEnviosEstados.ConError
+                    : (int)eEnviosEstados.Correcto;
+
+                envioSafe.FechaUltimoMov = DateTime.Now;
+                envioSafe.UsuarioUltimoMovId = usuario.Id;
+
+                context.Envios.Update(envioSafe);
+                await context.SaveChangesAsync();
             }
 
             envioSafe.FechaUltimoMov = DateTime.Now;
             envioSafe.UsuarioUltimoMovId = usuario.Id;
+            envioSafe.EstadoId = huboErrores
+                ? (int)eEnviosEstados.ConError
+                : (int)eEnviosEstados.Correcto;
 
             if (envioSafe.UsuarioId == 0)
                 envioSafe.UsuarioId = usuario.Id;
