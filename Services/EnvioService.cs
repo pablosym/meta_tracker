@@ -1175,7 +1175,9 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
                 envioSafe.FechaUltimoMov = DateTime.Now;
                 envioSafe.UsuarioUltimoMovId = usuario.Id;
-                envioSafe.UsuarioId = usuario.Id;
+
+                if (envioSafe.UsuarioId == 0)
+                    envioSafe.UsuarioId = usuario.Id;
 
                 context.Envios.Update(envioSafe);
                 await context.SaveChangesAsync();
@@ -1232,21 +1234,21 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
         if (telefonos.Count == 1)
         {
-            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "UNICO_AFILIADO_TELEFONO");
-            return new TelefonoGuiaAuditInfo(telefonos[0].Telefono, "UNICO_AFILIADO_TELEFONO");
+            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "UNICO AFILIADO");
+            return new TelefonoGuiaAuditInfo(telefonos[0].Telefono, "UNICO AFILIADO");
         }
 
         if (telefonos.Count > 1)
         {
             Error.WriteLog($"ERROR TELEFONO MULTIPLE - Envio: {envioNumero} Guia: {guia.Numero}");
 
-            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "MULTIPLES_AFILIADOS_TELEFONO");
+            await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "MULTIPLES AFILIADOS");
 
-            return new TelefonoGuiaAuditInfo(null, "MULTIPLES_AFILIADOS_TELEFONO");
+            return new TelefonoGuiaAuditInfo(null, "<b class='text-danger'>MULTIPLES AFILIADOS</b>");
         }
 
-        await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "SIN_TELEFONO");
-        return new TelefonoGuiaAuditInfo(null, "SIN_TELEFONO");
+        await RegistrarTelefonosGuiasLogAsync(context, guia, usuario, telefonos, "SIN TELEFONO");
+        return new TelefonoGuiaAuditInfo(null, "SIN TELEFONO");
     }
 
     private async Task RegistrarTelefonosGuiasLogAsync(
@@ -1301,8 +1303,8 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
         int estadoId,
         string resultado)
     {
-        var observacion = $"Resultado: {resultado}. TelefonoEstado: {telefono.Estado}. Telefono: {(string.IsNullOrWhiteSpace(telefono.Telefono) ? "N/A" : telefono.Telefono)}";
 
+        var observacion = $"{resultado}. Tel.Estado: {telefono.Estado}. Tel: {(string.IsNullOrWhiteSpace(telefono.Telefono) ? "N/A" : telefono.Telefono)}";
         var envioAudit = new EnvioAudit
         {
             Envio = envio.Numero,
