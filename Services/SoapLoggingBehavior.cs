@@ -16,17 +16,18 @@ public sealed class SoapLoggingBehavior : IEndpointBehavior
     private readonly ILogger _logger;
     private readonly bool _toFile;
     private readonly string? _path;
-
-    public SoapLoggingBehavior(ILogger logger, bool toFile = false, string? path = null)
+    private readonly bool _simular;
+    public SoapLoggingBehavior(ILogger logger, bool toFile = false, string? path = null, bool simular = false)
     {
         _logger = logger;
         _toFile = toFile;
         _path = path;
+        _simular = simular;
     }
 
     public void AddBindingParameters(ServiceEndpoint endpoint, BindingParameterCollection bindingParameters) { }
     public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime)
-        => clientRuntime.ClientMessageInspectors.Add(new SoapLoggingInspector(_logger, _toFile, _path));
+        => clientRuntime.ClientMessageInspectors.Add(new SoapLoggingInspector(_logger, _toFile, _path, _simular));
     public void ApplyDispatchBehavior(ServiceEndpoint endpoint, EndpointDispatcher endpointDispatcher) { }
     public void Validate(ServiceEndpoint endpoint) { }
 
@@ -35,15 +36,16 @@ public sealed class SoapLoggingBehavior : IEndpointBehavior
         private readonly ILogger _logger;
         private readonly bool _toFile;
         private readonly string? _path;
-
+        private readonly bool _simular;
         // contador para diferenciar múltiples requests en el mismo milisegundo
         private static long _seq = 0;
 
-        public SoapLoggingInspector(ILogger logger, bool toFile, string? path)
+        public SoapLoggingInspector(ILogger logger, bool toFile, string? path, bool simular)
         {
             _logger = logger;
             _toFile = toFile;
             _path = path;
+            _simular = simular;
         }
 
         public object BeforeSendRequest(ref Message request, IClientChannel channel)
@@ -60,11 +62,18 @@ public sealed class SoapLoggingBehavior : IEndpointBehavior
                 var guia = SoapLogContext.GuiaNumero;                 
                 Write("SOAP_REQUEST", xml, baseId, guia);
 
+                //  cortar envío si estamos en simulación
+                if (_simular)
+                {
+                    channel.Abort();
+                }
+
                 // devolvemos info para usarla en AfterReceiveReply
                 return new Correlation(baseId, guia);
             }
             catch (Exception ex)
             {
+             
                 _logger.LogWarning(ex, "No se pudo loguear el SOAP Request");
                 return null!;
             }
