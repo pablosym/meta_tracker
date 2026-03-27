@@ -273,7 +273,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                         envioToSend.Vehiculo = await scopedContext.Vehiculos.Include(i => i.Tipo).FirstOrDefaultAsync(x => x.Id == item.VehiculoId);
                         envioToSend.Chofer = await scopedContext.Choferes.FirstOrDefaultAsync(x => x.Id == item.ChoferId);
 
-                        var result = await EnviarALogictrackerAsync(scopedContext, envioToSend, usuario);
+                        var result = await EnviarConAgrupacionPorTelefonoAsync(scopedContext, envioToSend, usuario);
 
                         if (result.IsOk)
                         {
@@ -335,7 +335,7 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                             TipoMensaje = eTipoMensaje.Ok
                         }, cancellationToken: token);
 
-                        await EnviarALogictrackerAsync(scopedContext, envio, usuario);
+                        await EnviarConAgrupacionPorTelefonoAsync(scopedContext, envio, usuario);
                     }
                     finally
                     {
@@ -891,6 +891,113 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             .ToListAsync();
     }
 
+    private async Task<MessageDTO> EnviarConAgrupacionPorTelefonoAsync(
+        Tracker_DevelContext context,
+        Envio envio,
+        UsuarioDTO usuario)
+    {
+        long? nroGuia = 0L;
+
+        if (envio.Guias != null && envio.Guias.Count == 1)
+            nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
+
+        var filtro = new FiltroEnvioDTO
+        {
+            Numero = envio.Numero,
+            GuiaNumero = nroGuia,
+            PageSize = int.MaxValue,
+            Skip = 0
+        };
+
+        var guias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
+
+        if (!guias.Any())
+            return await EnviarALogictrackerAsync(context, envio, usuario);
+
+        var articulos = new List<ArticuloDTO>();
+
+        foreach (var guia in guias)
+        {
+            filtro.Numero = guia.Numero;
+            filtro.GuiaNumero = null;
+
+            var articulosGuia = await ObtenerArticulosPorGuiaInternalAsync(context, filtro, usuario.Nombre);
+
+            var telefonosGuia = articulosGuia
+                .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
+                .Select(a => a.Telefono)
+                .Distinct()
+                .ToList();
+
+            if (telefonosGuia.Count > 1)
+            {
+                _logger.LogWarning("Guía con múltiples teléfonos detectada. Envio: {EnvioNumero}. Guía: {GuiaNumero}.", envio.Numero, guia.Numero);
+            }
+
+            articulos.AddRange(articulosGuia);
+        }
+
+        var telefonos = articulos
+            .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
+            .Select(a => a.Telefono!.Trim())
+            .Distinct()
+            .ToList();
+
+        if (telefonos.Count <= 1)
+            return await EnviarALogictrackerAsync(context, envio, usuario);
+
+        MessageDTO? ultimoResultado = null;
+
+        foreach (var telefono in telefonos)
+        {
+            var guiasNumeroTelefono = articulos
+                .Where(a => string.Equals(a.Telefono?.Trim(), telefono, StringComparison.Ordinal))
+                .Select(a => a.NumeroGuia)
+                .Distinct()
+                .ToHashSet();
+
+            var guiasTelefono = guias
+                .Where(g => guiasNumeroTelefono.Contains(g.Numero))
+                .Select(g => new EnvioGuia
+                {
+                    Numero = g.Numero,
+                    Fecha = g.Fecha,
+                    EstadoId = g.EstadoId ?? (int)eEnviosEstados.Pendiente
+                })
+                .ToList();
+
+            if (guiasTelefono.Count == 0)
+                continue;
+
+            var envioTelefono = ClonarEnvioParaTelefono(envio);
+            envioTelefono.CodigoViaje = Guid.NewGuid();
+
+            foreach (var guiaTelefono in guiasTelefono)
+                envioTelefono.Guias.Add(guiaTelefono);
+
+            ultimoResultado = await EnviarALogictrackerAsync(context, envioTelefono, usuario);
+        }
+
+        return ultimoResultado ?? MessageDTO.Warning("No se encontraron guías asociadas a teléfonos válidos para sincronizar.");
+    }
+
+    private Envio ClonarEnvioParaTelefono(Envio envio)
+    {
+        return new Envio
+        {
+            Id = envio.Id,
+            Numero = envio.Numero,
+            FechaInicio = envio.FechaInicio,
+            FechaTurno = envio.FechaTurno,
+            CodigoViaje = envio.CodigoViaje,
+            Transportista = envio.Transportista,
+            TransportistaDestino = envio.TransportistaDestino,
+            Vehiculo = envio.Vehiculo,
+            Chofer = envio.Chofer,
+            Guias = []
+        };
+    }
+
 
 
     private async Task<MessageDTO> EnviarALogictrackerAsync(Tracker_DevelContext context, Envio? envio, UsuarioDTO usuario)
@@ -1304,7 +1411,8 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
         string resultado)
     {
 
-        var observacion = $"{resultado}. Tel.Estado: {telefono.Estado}. Tel: {(string.IsNullOrWhiteSpace(telefono.Telefono) ? "N/A" : telefono.Telefono)}";
+        var telefonoUsado = string.IsNullOrWhiteSpace(telefono.Telefono) ? "N/A" : telefono.Telefono;
+        var observacion = $"{resultado}. Tel.Estado: {telefono.Estado}. Tel: {telefonoUsado}. CodigoViaje: {envio.CodigoViaje}";
         var envioAudit = new EnvioAudit
         {
             Envio = envio.Numero,
