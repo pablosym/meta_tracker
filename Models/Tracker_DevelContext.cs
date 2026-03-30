@@ -53,7 +53,7 @@ public partial class Tracker_DevelContext : DbContext
         modelBuilder.UseCollation("Modern_Spanish_CI_AI");
 
 
-        OnModelCreatingPartial(modelBuilder);
+        
 
 
         modelBuilder.Entity<vwTransportista>(entity =>
@@ -79,8 +79,38 @@ public partial class Tracker_DevelContext : DbContext
         modelBuilder.Entity<vwTelefonoGuia>()
               .ToView("vwTelefonosGuias")
               .HasNoKey();
+
+
+        OnModelCreatingPartial(modelBuilder);
+
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 
+
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        if (!optionsBuilder.IsConfigured)
+        {
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: true)
+                .AddJsonFile("appsettings.Development.json", optional: true)
+                .AddEnvironmentVariables()
+                .Build();
+
+            var connectionString = configuration.GetConnectionString("TrackerDbConnectionString");
+
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                var commandTimeoutSeconds = configuration.GetSection("DatabaseSettings")["CommandTimeoutSeconds"] ?? "30";
+
+                optionsBuilder.UseSqlServer(connectionString, providerOptions =>
+                    providerOptions.EnableRetryOnFailure()
+                        .CommandTimeout(int.Parse(commandTimeoutSeconds)));
+            }
+        }
+    }
 }
+

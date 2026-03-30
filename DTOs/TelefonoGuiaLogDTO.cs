@@ -12,4 +12,6 @@ public class TelefonoGuiaLogDTO
     public string? NombreAfiliado { get; set; } = string.Empty;
 
     public string? TelefonoEstado { get; set; } = string.Empty;
+
+    public string? Telefono { get; set; } = string.Empty;
 }

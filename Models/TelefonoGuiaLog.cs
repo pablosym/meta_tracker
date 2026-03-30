@@ -9,6 +9,8 @@ public class TelefonoGuiaLog
     public long Afiliado { get; set; }
     public string Listapre { get; set; } = null!;
     public string TelefonoEstado { get; set; } = null!;
+
+    public string? Telefono { get; set; }
     public string? UsuarioRegistra { get; set; }
 
     public string? NombreAfiliado { get; set; } = string.Empty; 

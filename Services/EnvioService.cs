@@ -618,6 +618,7 @@ public class EnvioService(Tracker_DevelContext context,
     List<EnvioAudit> auditorias)
     {
         long? nroGuia = 0L;
+        var logsSplitTelefonos = new List<TelefonoGuiaLog>();
 
         if (envio.Guias != null && envio.Guias.Count == 1)
             nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
@@ -726,6 +727,8 @@ public class EnvioService(Tracker_DevelContext context,
 
             if (!guiasTelefono.Any())
                 continue;
+            
+            
 
             foreach (var guiaTelefono in guiasTelefono)
             {
@@ -734,27 +737,62 @@ public class EnvioService(Tracker_DevelContext context,
                 if (!splitsAuditados.Add(claveSplit))
                     continue;
 
-                auditorias.Add(new EnvioAudit
-                {
-                    Envio = envio.Numero,
-                    EstadoId = (int)eEnviosEstados.ConAdvertencias,
-                    Fecha = DateTime.Now,
-                    Guia = guiaTelefono.Numero,
-                    Usuario = usuario.Nombre,
-                    Direccion = envio.TransportistaDestino?.Direccion,
-                    CodigoViaje = envio.CodigoViaje,
-                    Observacion = $"SPLIT POR TELEFONO - Guia: {guiaTelefono.Numero} - Tel: {telefono}",
-                    Estado = null
-                });
+                //auditorias.Add(new EnvioAudit
+                //{
+                //    Envio = envio.Numero,
+                //    EstadoId = (int)eEnviosEstados.ConAdvertencias,
+                //    Fecha = DateTime.Now,
+                //    Guia = guiaTelefono.Numero,
+                //    Usuario = usuario.Nombre,
+                //    Direccion = envio.TransportistaDestino?.Direccion,
+                //    CodigoViaje = envio.CodigoViaje,
+                //    Observacion = $"SPLIT POR TELEFONO - Guia: {guiaTelefono.Numero} - Tel: {telefono}",
+                //    Estado = null
+                //});
             }
+
+            logsSplitTelefonos.AddRange(CrearAuditoriaSplitTelefonos(articulosTelefono, telefono, usuario.Nombre));
+
 
             enviosPreparados.Add(CrearEnvioPreparado(envio, guiasTelefono, articulosTelefono, telefono));
         }
 
+        if (logsSplitTelefonos.Count > 0)
+        {
+            context.TelefonosGuiasLog.AddRange(logsSplitTelefonos);
+            await context.SaveChangesAsync();
+        }
         return enviosPreparados;
     }
 
-
+    private static List<TelefonoGuiaLog> CrearAuditoriaSplitTelefonos(
+    List<ArticuloDTO> articulosTelefono,
+    string telefono,
+    string? usuario)
+    {
+        return articulosTelefono
+            .GroupBy(a => new
+            {
+                a.NumeroGuia,
+                a.ClienteCodigo,
+                a.CabeceraComprobantesAfiliado,
+                a.ListaPrecio,
+                a.AfiliadoNombre
+            })
+            .Select(g => new TelefonoGuiaLog
+            {
+                NumGuia = g.Key.NumeroGuia,
+                Cliente = (int)g.Key.ClienteCodigo,
+                Afiliado = g.Key.CabeceraComprobantesAfiliado,
+                Listapre = g.Key.ListaPrecio ?? string.Empty,
+                FechaRegistro = DateTime.Now,
+                UsuarioRegistra = usuario,
+                NombreAfiliado = g.Key.AfiliadoNombre,
+                TelefonoEstado = $"SPLIT",
+                Telefono = telefono
+            })
+            .ToList();
+    }
     private static EnvioPreparadoDTO CrearEnvioPreparadoSinArticulos(
     Envio envio,
     List<GuiaDTO> guias)
@@ -1206,21 +1244,6 @@ public class EnvioService(Tracker_DevelContext context,
         }
     }
 
-    private async Task<MessageDTO> FinalizarAuditoriasYRespuestaAsync(
-    List<EnvioAudit> auditorias,
-    UsuarioDTO usuario,
-    bool huboErrores)
-    {
-        if (auditorias.Count > 0)
-        {
-            await _envioAuditService.AuditarEnviosAsync(auditorias);
-            auditorias.Clear();
-        }
-
-        return huboErrores
-            ? MessageDTO.Warning("Envío sincronizado con observaciones o errores.")
-            : MessageDTO.Ok("Envío sincronizado con éxito.");
-    }
-
+   
 
 }

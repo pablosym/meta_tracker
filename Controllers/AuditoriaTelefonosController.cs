@@ -81,7 +81,8 @@ public class AuditoriaTelefonosController(Tracker_DevelContext context, IHttpCon
                 UsuarioRegistra = x.UsuarioRegistra,
                 FechaRegistro = x.FechaRegistro,
                 NombreAfiliado = x.NombreAfiliado,
-                TelefonoEstado = x.TelefonoEstado
+                TelefonoEstado = x.TelefonoEstado, 
+                Telefono = x.Telefono
             })
             .ToListAsync();
 
