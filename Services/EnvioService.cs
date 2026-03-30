@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json.Linq;
 using ServiceReference;
 using System.Data;
 using System.Globalization;
@@ -27,7 +28,9 @@ public interface IEnvioService
     Task<MessageDTO> GuardarAsync(EnvioDTO envioDTO, int usuarioId);
 }
 
-public class EnvioService(Tracker_DevelContext context, IConfiguration configuration, IHubContext<NotificacionHub> notificationHubContext,
+public class EnvioService(Tracker_DevelContext context,
+    IConfiguration configuration,
+    IHubContext<NotificacionHub> notificationHubContext,
     IBackgroundTaskQueue backgroundTaskQueue,
     IServiceScopeFactory serviceScopeFactory,
     IEnvioAuditService envioAuditService,
@@ -130,6 +133,55 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
         return articulos;
     }
+
+
+    private async Task<List<ArticuloDTO>> ObtenerArticulosPorGuiasInternalAsync(
+    Tracker_DevelContext context,
+    IEnumerable<long> numGuias,
+    string? usuario)
+    {
+        var numGuiasList = numGuias
+            .Distinct()
+            .ToList();
+
+        if (!numGuiasList.Any())
+            return [];
+
+        var numGuiasCsv = string.Join(",", numGuiasList);
+
+        var articulos = await context.ArticuloDTO
+            .FromSqlRaw(
+                @"EXEC GetArticulosPorGuias 
+                @NumGuiasCsv = {0},
+                @pageSize = {1},
+                @skip = {2}",
+                numGuiasCsv,
+                int.MaxValue,
+                0)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (!articulos.Any())
+            return articulos;
+
+        var telefonos = await GetTelefonosPorGuiaAsync(context, numGuiasList, usuario);
+
+        foreach (var art in articulos)
+        {
+            var key = (art.NumeroGuia, art.ClienteCodigo, art.CabeceraComprobantesAfiliado);
+
+            if (telefonos.TryGetValue(key, out var tel))
+            {
+                art.Telefono = tel.Telefono;
+                art.TelefonoOrigen = tel.OrigenDescripcion;
+                art.AfiliadoNombre = tel.AfiliadoNombre;
+            }
+        }
+
+        return articulos;
+    }
+
+
     public async Task<IEnumerable<ArticuloDTO>> ObtenerArticulosPorGuiaAsync(FiltroEnvioDTO filtro, string? usuario)
     {
         return await ObtenerArticulosPorGuiaInternalAsync(_context, filtro, usuario);
@@ -394,8 +446,10 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     }
 
 
-
-    private async Task<Dictionary<(long NumGuia, long Cliente, long Afiliado), TelefonoConOrigenDTO>> GetTelefonosPorGuiaInternalAsync(Tracker_DevelContext context, IEnumerable<long> numGuias, string? usuario)
+    private async static Task<Dictionary<(long NumGuia, long Cliente, long Afiliado), TelefonoConOrigenDTO>> GetTelefonosPorGuiaInternalAsync(
+    Tracker_DevelContext context,
+    IEnumerable<long> numGuias,
+    string? usuario)
     {
         var numGuiasCsv = string.Join(",", numGuias);
 
@@ -405,7 +459,6 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             .ToListAsync();
 
         var dic = new Dictionary<(long NumGuia, long Cliente, long Afiliado), TelefonoConOrigenDTO>();
-        var logEntries = new List<TelefonoGuiaLog>();
 
         foreach (var t in telefonos)
         {
@@ -441,7 +494,6 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                     break;
 
                 case eTelefonoTablaOrigen.AFILIADO_MULTIPLES_TEL:
-
                     dic[key] = new TelefonoConOrigenDTO
                     {
                         Telefono = "ERROR",
@@ -449,30 +501,12 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                         AfiliadoNombre = t.AfiliadoNombre,
                         AfiliadoId = t.Afiliado
                     };
-
-                    logEntries.Add(new TelefonoGuiaLog
-                    {
-                        NumGuia = t.NumGuia,
-                        Cliente = t.Cliente,
-                        Afiliado = t.Afiliado,
-                        Listapre = t.Listapre,
-                        FechaRegistro = DateTime.Now,
-                        TelefonoEstado = t.TelefonoEstado,
-                        UsuarioRegistra = usuario
-                    });
-
                     break;
 
                 case eTelefonoTablaOrigen.SIN_TELEFONO:
                 default:
                     break;
             }
-        }
-
-        if (logEntries.Count > 0)
-        {
-            context.TelefonosGuiasLog.AddRange(logEntries);
-            await context.SaveChangesAsync();
         }
 
         return dic;
@@ -539,10 +573,49 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
     }
 
     private async Task<MessageDTO> EnviarConAgrupacionPorTelefonoAsync(
-        Tracker_DevelContext context,
-        Envio envio,
-        UsuarioDTO usuario,
-         List<EnvioAudit> auditorias)
+    Tracker_DevelContext context,
+    Envio envio,
+    UsuarioDTO usuario,
+    List<EnvioAudit> auditorias)
+    {
+        var cantidadAuditoriasInicial = auditorias.Count;
+
+        var enviosPreparados = await PrepararEnviosParaLogicTrackerAsync(context, envio, usuario, auditorias);
+
+        if (!enviosPreparados.Any())
+            return MessageDTO.Warning("No se encontraron datos para sincronizar.");
+
+        MessageDTO? ultimoResultado = null;
+        var huboErrores = false;
+
+        foreach (var envioPreparado in enviosPreparados)
+        {
+            ultimoResultado = await EnviarEnvioPreparadoALogicTrackerAsync(context, envioPreparado, usuario, auditorias);
+
+            if (ultimoResultado == null || !ultimoResultado.IsOk)
+                huboErrores = true;
+        }
+
+        // Persistimos auditorías UNA sola vez por envío
+        var auditoriasNuevas = auditorias
+            .Skip(cantidadAuditoriasInicial)
+            .ToList();
+
+        if (auditoriasNuevas.Count > 0)
+            await _envioAuditService.AuditarEnviosAsync(auditoriasNuevas);
+
+        return ultimoResultado
+            ?? (huboErrores
+                ? MessageDTO.Warning("Envío sincronizado con observaciones o errores.")
+                : MessageDTO.Ok("Envío sincronizado con éxito."));
+    }
+
+
+    private async Task<List<EnvioPreparadoDTO>> PrepararEnviosParaLogicTrackerAsync(
+    Tracker_DevelContext context,
+    Envio envio,
+    UsuarioDTO usuario,
+    List<EnvioAudit> auditorias)
     {
         long? nroGuia = 0L;
 
@@ -557,41 +630,49 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
             Skip = 0
         };
 
+        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+        {
+            Mensaje = "Buscando Guias",
+            Usuario = usuario.Nombre,
+            TipoMensaje = eTipoMensaje.Ok
+        });
+
         var guias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
 
         if (!guias.Any())
-            return await EnviarALogictrackerAsync(context, envio, usuario, auditorias);
+            return [];
 
-        var articulos = new List<ArticuloDTO>();
+        // Se traen los artículos una sola vez para todas las guías del envío
+        var numerosGuia = guias
+            .Select(g => g.Numero)
+            .Distinct()
+            .ToList();
+
+        var articulos = await ObtenerArticulosPorGuiasInternalAsync(context, numerosGuia, usuario.Nombre);
+
+        if (!articulos.Any())
+        {
+            return
+            [
+                CrearEnvioPreparadoSinArticulos(envio, guias)
+            ];
+        }
 
         foreach (var guia in guias)
         {
-            filtro.Numero = guia.Numero;
-            filtro.GuiaNumero = null;
-
-            var articulosGuia = await ObtenerArticulosPorGuiaInternalAsync(context, filtro, usuario.Nombre);
+            var articulosGuia = articulos
+                .Where(a => a.NumeroGuia == guia.Numero)
+                .ToList();
 
             var telefonosGuia = articulosGuia
                 .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
-                .Select(a => a.Telefono)
+                .Select(a => a.Telefono!.Trim())
                 .Distinct()
                 .ToList();
 
             if (telefonosGuia.Count > 1)
             {
                 Error.WriteLog($"WARN MULTIPLES TELEFONOS EN GUIA - Envio: {envio.Numero} Guia: {guia.Numero} Tels: {string.Join(",", telefonosGuia)}");
-
-
-                //await _envioAuditService.AuditarEnvioAsync(new EnvioAudit
-                //{
-                //    Envio = envio.Numero,
-                //    Guia = guia.Numero,
-                //    Fecha = DateTime.Now,
-                //    Usuario = usuario.Nombre,
-                //    EstadoId = (int)eEnviosEstados.ConAdvertencias,
-                //    Observacion = $"MULTIPLES TELEFONOS EN GUIA, SE ENVIA POR SEPARADO Tels: {string.Join(",", telefonosGuia)}"
-                //});
-
 
                 auditorias.Add(new EnvioAudit
                 {
@@ -602,89 +683,202 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                     Usuario = usuario.Nombre,
                     Direccion = envio.TransportistaDestino?.Direccion,
                     CodigoViaje = envio.CodigoViaje,
-                    Observacion = $"MULTIPLES TELEFONOS EN GUIA, SE ENVIA POR SEPARADO Tels: {string.Join(",", telefonosGuia)}",
+                    Observacion = $"GUIA CON MULTIPLES TELEFONOS DETECTADOS: {string.Join(",", telefonosGuia)}",
                     Estado = null
                 });
-
-
             }
-
-            articulos.AddRange(articulosGuia);
         }
 
-        var telefonos = articulos
+        var telefonosValidos = articulos
             .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
             .Select(a => a.Telefono!.Trim())
             .Distinct()
             .ToList();
 
-        if (telefonos.Count <= 1)
-            return await EnviarALogictrackerAsync(context, envio, usuario, auditorias);
-
-        MessageDTO? ultimoResultado = null;
-
-        foreach (var telefono in telefonos)
+        if (telefonosValidos.Count <= 1)
         {
-            var guiasNumeroTelefono = articulos
+            return
+            [
+                CrearEnvioPreparado(envio, guias, articulos, telefonosValidos.FirstOrDefault())
+            ];
+        }
+
+        var enviosPreparados = new List<EnvioPreparadoDTO>();
+        var splitsAuditados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var telefono in telefonosValidos)
+        {
+            var articulosTelefono = articulos
                 .Where(a => string.Equals(a.Telefono?.Trim(), telefono, StringComparison.Ordinal))
+                .ToList();
+
+            if (!articulosTelefono.Any())
+                continue;
+
+            var guiasNumeroTelefono = articulosTelefono
                 .Select(a => a.NumeroGuia)
                 .Distinct()
                 .ToHashSet();
 
             var guiasTelefono = guias
                 .Where(g => guiasNumeroTelefono.Contains(g.Numero))
-                .Select(g => new EnvioGuia
-                {
-                    Numero = g.Numero,
-                    Fecha = g.Fecha,
-                    EstadoId = g.EstadoId ?? (int)eEnviosEstados.Pendiente
-                })
                 .ToList();
 
-            if (guiasTelefono.Count == 0)
+            if (!guiasTelefono.Any())
                 continue;
 
-            var envioTelefono = ClonarEnvioParaTelefono(envio);
-            envioTelefono.CodigoViaje = Guid.NewGuid();
-            envioTelefono.TelefonoGrupo = telefono;
-
             foreach (var guiaTelefono in guiasTelefono)
-                envioTelefono.Guias.Add(guiaTelefono);
+            {
+                var claveSplit = $"{envio.Numero}|{guiaTelefono.Numero}|{telefono}";
 
-            ultimoResultado = await EnviarALogictrackerAsync(context, envioTelefono, usuario, auditorias);
+                if (!splitsAuditados.Add(claveSplit))
+                    continue;
+
+                auditorias.Add(new EnvioAudit
+                {
+                    Envio = envio.Numero,
+                    EstadoId = (int)eEnviosEstados.ConAdvertencias,
+                    Fecha = DateTime.Now,
+                    Guia = guiaTelefono.Numero,
+                    Usuario = usuario.Nombre,
+                    Direccion = envio.TransportistaDestino?.Direccion,
+                    CodigoViaje = envio.CodigoViaje,
+                    Observacion = $"SPLIT POR TELEFONO - Guia: {guiaTelefono.Numero} - Tel: {telefono}",
+                    Estado = null
+                });
+            }
+
+            enviosPreparados.Add(CrearEnvioPreparado(envio, guiasTelefono, articulosTelefono, telefono));
         }
 
-        return ultimoResultado ?? MessageDTO.Warning("No se encontraron guías asociadas a teléfonos válidos para sincronizar.");
+        return enviosPreparados;
     }
 
-    private Envio ClonarEnvioParaTelefono(Envio envio)
+
+    private static EnvioPreparadoDTO CrearEnvioPreparadoSinArticulos(
+    Envio envio,
+    List<GuiaDTO> guias)
     {
-        return new Envio
+        return new EnvioPreparadoDTO
         {
-            Id = envio.Id,
-            Numero = envio.Numero,
-            FechaInicio = envio.FechaInicio,
-            FechaTurno = envio.FechaTurno,
-            CodigoViaje = envio.CodigoViaje,
+            EnvioId = envio.Id,
+            NumeroEnvio = envio.Numero,
+            CodigoViaje = envio.CodigoViaje ?? Guid.NewGuid(),
+            TelefonoGrupo = null,
+            FechaInicio = envio.FechaInicio ?? DateTime.Now,
+            FechaTurno = envio.FechaTurno ?? DateTime.Now,
+            DireccionDestino = envio.TransportistaDestino?.Direccion,
+            CoordenadasDestino = envio.TransportistaDestino?.Coordenadas,
             Transportista = envio.Transportista,
             TransportistaDestino = envio.TransportistaDestino,
-            Vehiculo = envio.Vehiculo,
             Chofer = envio.Chofer,
-            UsuarioId = envio.UsuarioId,
-            UsuarioUltimoMovId = envio.UsuarioUltimoMovId,
-            Guias = []
+            Vehiculo = envio.Vehiculo,
+            Guias = guias.Select(g => new GuiaPreparadaDTO
+            {
+                NumeroGuia = g.Numero,
+                Fecha = g.Fecha,
+                EstadoId = g.EstadoId ?? (int)eEnviosEstados.Pendiente,
+                ClienteCodigo = g.ClienteCodigo,
+                ClienteAfiliado = g.ClienteAfiliado,
+                ClienteNombre = g.ClienteNombre,
+                ClienteDireccion = g.ClienteDireccion,
+                Coordenadas = g.Coordenadas,
+                AfiliadoNombre = g.AfiliadoNombre,
+                Telefono = null,
+                Remitos = []
+            }).ToList()
         };
     }
 
+    private static EnvioPreparadoDTO CrearEnvioPreparado(
+        Envio envio,
+        List<GuiaDTO> guias,
+        List<ArticuloDTO> articulosFiltrados,
+        string? telefono)
+    {
+        var envioPreparado = new EnvioPreparadoDTO
+        {
+            EnvioId = envio.Id,
+            NumeroEnvio = envio.Numero,
+            // Si hay split por teléfono, cada paquete lleva un código de viaje propio
+            CodigoViaje = string.IsNullOrWhiteSpace(telefono)
+                ? (envio.CodigoViaje ?? Guid.NewGuid())
+                : Guid.NewGuid(),
+            TelefonoGrupo = telefono,
+            FechaInicio = envio.FechaInicio ?? DateTime.Now,
+            FechaTurno = envio.FechaTurno ?? DateTime.Now,
+            DireccionDestino = envio.TransportistaDestino?.Direccion,
+            CoordenadasDestino = envio.TransportistaDestino?.Coordenadas,
+            Transportista = envio.Transportista,
+            TransportistaDestino = envio.TransportistaDestino,
+            Chofer = envio.Chofer,
+            Vehiculo = envio.Vehiculo
+        };
 
+        foreach (var guia in guias)
+        {
+            var articulosGuia = articulosFiltrados
+                .Where(a => a.NumeroGuia == guia.Numero)
+                .ToList();
 
-    private async Task<MessageDTO> EnviarALogictrackerAsync(Tracker_DevelContext context, Envio? envio, UsuarioDTO usuario, List<EnvioAudit> auditorias)
+            // En split por teléfono, tomamos el afiliado real de los artículos filtrados
+            var afiliado = !string.IsNullOrWhiteSpace(telefono)
+                ? articulosGuia
+                    .Select(a => new
+                    {
+                        Id = a.CabeceraComprobantesAfiliado,
+                        Nombre = a.AfiliadoNombre
+                    })
+                    .FirstOrDefault()
+                : null;
+
+            // Acá se resuelve el bug principal:
+            // los remitos salen SOLO de los artículos filtrados para ese teléfono
+            var remitos = articulosGuia
+                .GroupBy(a => a.NumeroComprobante)
+                .Select(groupRemito => new RemitoPreparadoDTO
+                {
+                    NumeroRemito = groupRemito.Key,
+                    Insumos = groupRemito
+                        .GroupBy(x => x.ArticuloCodigo)
+                        .Select(gInsumo => new InsumoPreparadoDTO
+                        {
+                            ArticuloCodigo = gInsumo.Key,
+                            ArticuloDescripcion = gInsumo.First().ArticuloDescripcion,
+                            Cantidad = gInsumo.Sum(x => (int)x.CantidadSolicitada)
+                        })
+                        .ToList()
+                })
+                .ToList();
+
+            envioPreparado.Guias.Add(new GuiaPreparadaDTO
+            {
+                NumeroGuia = guia.Numero,
+                Fecha = guia.Fecha,
+                EstadoId = guia.EstadoId ?? (int)eEnviosEstados.Pendiente,
+                ClienteCodigo = guia.ClienteCodigo,
+                ClienteAfiliado = guia.ClienteAfiliado,
+                ClienteNombre = guia.ClienteNombre,
+                ClienteDireccion = guia.ClienteDireccion,
+                Coordenadas = guia.Coordenadas,
+                AfiliadoId = afiliado?.Id,
+                AfiliadoNombre = afiliado?.Nombre ?? guia.AfiliadoNombre,
+                Telefono = telefono,
+                Remitos = remitos
+            });
+        }
+
+        return envioPreparado;
+    }
+
+    private async Task<MessageDTO> EnviarEnvioPreparadoALogicTrackerAsync(
+    Tracker_DevelContext context,
+    EnvioPreparadoDTO envio,
+    UsuarioDTO usuario,
+    List<EnvioAudit> auditorias)
     {
         try
         {
-            if (envio == null)
-                return MessageDTO.Error("El envio es un dato obligatorio");
-
             var wsSetting = _configuration.GetSection("Servicio").Get<WSSettingDTO>();
             if (wsSetting == null)
                 return MessageDTO.Error("El servicio sin configuracion revise el appsetting");
@@ -701,356 +895,118 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
             CrearDistribucionConEntidadesSoapClient? client = null;
 
-
-            // Logging SOAP si está habilitado
             var logCfg = _configuration.GetSection("SoapLogging").Get<SoapLoggingOptions>() ?? new();
 
             if (servicioActivo)
             {
                 client = new CrearDistribucionConEntidadesSoapClient(
-                    CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap, url);
+                    CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap,
+                    url);
 
                 if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
-                    client.Endpoint.EndpointBehaviors.Add(new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path, logCfg.SimularSoap));
-            }
-
-            var request = new DistribucionConEntidadesWs
-            {
-                Empresa = wsSetting.Empresa,
-                BaseOperativa = wsSetting.BaseOperativa,
-                FechaInicio = envio.FechaInicio ?? DateTime.Now,
-                FechaTurno = envio.FechaTurno ?? DateTime.Now,
-            };
-
-            //
-            // Ahora el codigo de viaje es unico (es la ruta sino no envian el mensaje x WhatsApp)
-            //
-            if (!envio.CodigoViaje.HasValue)
-                envio.CodigoViaje = Guid.NewGuid();
-
-            //Le quito los - para que formen un numero largo de 32 caracteres
-            request.CodigoViaje = envio.CodigoViaje?.ToString("N");
-
-            // ---------------- TRANSPORTISTA ----------------
-
-            if (envio.TransportistaDestino == null)
-            {
-                request.Transportista = new TransportistaWs
                 {
-                    Codigo = (envio?.Transportista?.Codigo != null)
-                        ? string.Concat(prefijoTest, envio.Transportista.Codigo.ToString())
-                        : "0",
-                    Descripcion = (envio?.Transportista?.Nombre != null)
-                        ? string.Concat(prefijoTest, envio.Transportista.Nombre)
-                        : string.Empty,
-                    Coordenadas = envio?.Transportista?.Coordenadas
-                };
-            }
-            else
-            {
-                request.Transportista = new TransportistaWs
-                {
-                    Codigo = (envio?.TransportistaDestino?.Codigo != null)
-                        ? string.Concat(prefijoTest, envio.TransportistaDestino.Codigo.ToString())
-                        : "0",
-                    Descripcion = string.Concat(prefijoTest, envio?.TransportistaDestino?.Nombre ?? string.Empty),
-                    Coordenadas = envio?.TransportistaDestino?.Coordenadas
-                };
-            }
-
-            // ---------------- CHOFER ----------------
-
-            request.Chofer = new ChoferWs
-            {
-                Descripcion = string.Concat(prefijoTest, envio?.Chofer?.ApellidoNombre ?? string.Empty),
-                Legajo = envio?.Chofer?.Legajo ?? string.Empty,
-                Telefono = envio?.Chofer?.Telefono ?? string.Empty
-            };
-
-            // ---------------- VEHICULO ----------------
-
-            request.Vehiculo = new VehiculoWs
-            {
-                Patente = envio?.Vehiculo?.Patente ?? string.Empty,
-                TipoVehiculo = new TipoVehiculoWs
-                {
-                    Codigo = envio?.Vehiculo?.Tipo?.Codigo ?? string.Empty,
-                    Descripcion = envio?.Vehiculo?.Tipo?.Descripcion ?? string.Empty
+                    client.Endpoint.EndpointBehaviors.Add(
+                        new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path, logCfg.SimularSoap));
                 }
-            };
-
-            // ---------------- OBTENER GUIAS ----------------
-
-            long? nroGuia = 0L;
-
-            if (envio?.Guias != null && envio.Guias.Count == 1)
-                nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
-
-            var filtro = new FiltroEnvioDTO
-            {
-                Numero = envio?.Numero,
-                GuiaNumero = nroGuia,
-                PageSize = int.MaxValue,
-                Skip = 0
-            };
-
-            var listGuias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
-
-            if (!listGuias.Any())
-                return MessageDTO.Error("No se encontraron guías para el envío.");
-
-
-            await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
-            {
-                Mensaje = $"finalizado de buscar las guias.",
-                Usuario = usuario.Nombre,
-                TipoMensaje = eTipoMensaje.Ok
-            });
-
-
-            // -----------------------------------------------------------
-            // Traemos TODOS los artículos de todas las guías en una sola pasada
-            // evitando ejecutar GetArticulosPorGuia por cada guía
-            // -----------------------------------------------------------
-
-            var articulosPorGuia = new Dictionary<long, List<ArticuloDTO>>();
-
-            foreach (var guia in listGuias)
-            {
-                filtro.Numero = guia.Numero;
-
-                var arts = await ObtenerArticulosPorGuiaInternalAsync(context, filtro, usuario.Nombre);
-
-                articulosPorGuia[guia.Numero] = arts;
             }
 
-            var envioSafe = envio;
-            envioSafe.Estado = null;
-            envioSafe.EstadoId = (int)eEnviosEstados.Correcto;
+            var request = ConstruirRequestLogicTracker(envio, wsSetting, prefijoTest);
 
-            var guiasNumero = listGuias.Select(g => g.Numero).Distinct().ToList();
-
+            var guiasNumero = envio.Guias.Select(g => g.NumeroGuia).Distinct().ToList();
 
             var guiasPersistidas = await context.EnviosGuias
-                                        .Where(g => g.EnvioId == envioSafe.Id && guiasNumero.Contains(g.Numero))
-                                        .GroupBy(g => g.Numero)
-                                        .ToDictionaryAsync(g => g.Key, g => g.First());
-
+                .Where(g => g.EnvioId == envio.EnvioId && guiasNumero.Contains(g.Numero))
+                .GroupBy(g => g.Numero)
+                .ToDictionaryAsync(g => g.Key, g => g.First());
 
             var huboErrores = false;
-
-            // ---------------- PROCESAR GUIAS ----------------
-
-            var totalGuias = listGuias.Count;
+            var totalGuias = envio.Guias.Count;
             var indexGuia = 0;
 
-
-            foreach (var guia in listGuias)
+            foreach (var guia in envio.Guias)
             {
-                var listClientes = new List<ClienteWs>();
-
-                var articulos = articulosPorGuia.TryGetValue(guia.Numero, out var arts)
-                                    ? arts
-                                    : new List<ArticuloDTO>();
-
-                if (!string.IsNullOrWhiteSpace(envio?.TelefonoGrupo))
+                request.Clientes =
+                [
+                    new ClienteWs
                 {
-                    articulos = articulos
-                        .Where(a => string.Equals(a.Telefono?.Trim(), envio.TelefonoGrupo.Trim(), StringComparison.Ordinal))
-                        .ToList();
-                }
-
-                // ---------------- REMITOS ----------------
-
-                var listRemitos = articulos
-                    .GroupBy(a => a.NumeroComprobante)
-                    .Select(groupRemito =>
-                    {
-                        var insumos = groupRemito
-                            .GroupBy(a => a.ArticuloCodigo)
-                            .Select(gInsumo => new InsumoCompletoWs
-                            {
-                                Codigo = gInsumo.Key.ToString(),
-                                Descripcion = string.Concat(prefijoTest, gInsumo.First().ArticuloDescripcion ?? string.Empty),
-                                Cantidad = gInsumo.Sum(x => (int)x.CantidadSolicitada)
-                            })
-                            .ToArray();
-
-                        return new RemitoCompletoWs
+                    Codigo = (!string.IsNullOrWhiteSpace(envio.TelefonoGrupo) && guia.AfiliadoId.HasValue)
+                        ? $"{guia.ClienteCodigo}-{guia.AfiliadoId.Value}"
+                        : guia.ClienteAfiliado,
+                    Descripcion = string.Concat(
+                        prefijoTest,
+                        guia.ClienteNombre ?? string.Empty,
+                        string.IsNullOrWhiteSpace(guia.AfiliadoNombre) ? string.Empty : string.Concat("–", guia.AfiliadoNombre)),
+                    Coordenadas = envio.CoordenadasDestino ?? guia.Coordenadas,
+                    Direccion = envio.DireccionDestino ?? guia.ClienteDireccion,
+                    Telefono = guia.Telefono,
+                    Remitos = guia.Remitos
+                        .Select(r => new RemitoCompletoWs
                         {
-                            Codigo = groupRemito.Key.ToString(CultureInfo.InvariantCulture),
-                            Insumos = insumos
-                        };
-                    })
-                    .ToList();
+                            Codigo = r.NumeroRemito.ToString(CultureInfo.InvariantCulture),
+                            Insumos = r.Insumos
+                                .Select(i => new InsumoCompletoWs
+                                {
+                                    Codigo = i.ArticuloCodigo.ToString(),
+                                    Descripcion = string.Concat(prefijoTest, i.ArticuloDescripcion ?? string.Empty),
+                                    Cantidad = i.Cantidad
+                                })
+                                .ToArray()
+                        })
+                        .ToArray()
+                }
+                ];
 
-
-                // ---------------- TELEFONO ----------------
-
-                var telefono = envio?.TelefonoGrupo;
-
-                var afiliado = !string.IsNullOrWhiteSpace(envio?.TelefonoGrupo)
-                                        ? articulos
-                                            .Where(a => a.Telefono == envio.TelefonoGrupo)
-                                            .Select(a => new
-                                            {
-                                                Id = a.CabeceraComprobantesAfiliado,
-                                                Nombre = a.AfiliadoNombre
-                                            })
-                                            .FirstOrDefault()
-                                        : null;
-
-                var afiliadoNombre = afiliado?.Nombre ?? guia.AfiliadoNombre;
-
-                var descripcionCliente = string.Concat(
-                                            prefijoTest,
-                                            guia.ClienteNombre ?? string.Empty,
-                                            string.IsNullOrWhiteSpace(afiliadoNombre)
-                                                ? string.Empty
-                                                : string.Concat("–", afiliadoNombre)
-                                            );
-
-
-                var codigoCliente = (!string.IsNullOrWhiteSpace(envio?.TelefonoGrupo) && afiliado?.Id != null)
-                                         ? $"{guia.ClienteCodigo}-{afiliado.Id}"
-                                         : guia.ClienteAfiliado;
-
-
-                listClientes.Add(new ClienteWs
-                {
-                    Codigo = codigoCliente,
-                    Descripcion = descripcionCliente,
-                    Coordenadas = envioSafe.TransportistaDestino?.Coordenadas ?? guia.Coordenadas,
-                    Direccion = envioSafe.TransportistaDestino?.Direccion ?? guia.ClienteDireccion,
-                    Telefono = telefono,
-                    Remitos = listRemitos.ToArray()
-                });
-
-                request.Clientes = listClientes.ToArray();
-
-                var guiaToBBDD = guiasPersistidas.TryGetValue(guia.Numero, out var guiaExistente)
+                var guiaToBBDD = guiasPersistidas.TryGetValue(guia.NumeroGuia, out var guiaExistente)
                     ? guiaExistente
                     : new EnvioGuia
                     {
-                        EnvioId = envioSafe.Id,
-                        Fecha = guia.Fecha,
-                        Numero = guia.Numero
+                        EnvioId = envio.EnvioId,
+                        Fecha = guia.Fecha ?? DateTime.Now,
+                        Numero = guia.NumeroGuia
                     };
 
                 try
                 {
-                    GenericResponse resp;
-
-
-                    // 🔥 SI EL CLIENT SE ROMPIÓ, LO RECREO
-                    if (client != null && client.State == System.ServiceModel.CommunicationState.Faulted)
-                    {
-                        client.Abort();
-
-                        client = new CrearDistribucionConEntidadesSoapClient(
-                            CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap,
-                            url);
-
-                        if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
-                        {
-                            client.Endpoint.EndpointBehaviors.Add(
-                                new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path, logCfg.SimularSoap));
-                        }
-                    }
-
-
-                    // 2. Ejecutar normalmente
-                    if (client == null)
-                    {
-                        resp = new GenericResponse { Codigo = 200 };
-                    }
-                    else
-                    {
-                        if (logCfg.SimularSoap)
-                        {
-                            // 🧪 MODO SIMULACIÓN
-                            using (SoapLogContext.UseGuia(guia.Numero.ToString()))
-                            {
-                                try
-                                {
-                                    await client.CreateDistribucionConEntidadesAsync(request);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Error.WriteLog($"SIMULACION SOAP ERROR (ignorado): {ex.Message}");
-                                }
-                            }
-                            resp = new GenericResponse { Codigo = 200 };
-                        }
-                        else
-                        {
-                            //  MODO REAL
-                            if (logCfg.Enabled && logCfg.ToFile)
-                            {
-                                using (SoapLogContext.UseGuia(guia.Numero.ToString()))
-                                {
-                                    var result = await client.CreateDistribucionConEntidadesAsync(request);
-                                    resp = result?.Body?.CreateDistribucionConEntidadesResult
-                                           ?? new GenericResponse { Codigo = 500, Mensaje = "Respuesta nula de LT" };
-                                }
-                            }
-                            else
-                            {
-                                var result = await client.CreateDistribucionConEntidadesAsync(request);
-                                resp = result?.Body?.CreateDistribucionConEntidadesResult
-                                       ?? new GenericResponse { Codigo = 500, Mensaje = "Respuesta nula de LT" };
-                            }
-                        }
-
-                    }
-
-
+                    var resp = await EnviarRequestLogicTrackerAsync(client, request, guia.NumeroGuia, logCfg, url);
 
                     if (resp.Codigo == 200)
                     {
                         guiaToBBDD.EstadoId = (int)eEnviosEstados.Correcto;
-                        // await RegistrarAuditoriaGuiaAsync(context, envioSafe, guia, usuario, telefono, (int)eEnviosEstados.Correcto, $"Logictracker OK ({resp.Codigo})");
-
 
                         auditorias.Add(new EnvioAudit
                         {
-                            Envio = envioSafe.Numero,
+                            Envio = envio.NumeroEnvio,
                             EstadoId = (int)eEnviosEstados.Correcto,
                             Fecha = DateTime.Now,
-                            Guia = guia.Numero,
+                            Guia = guia.NumeroGuia,
                             Usuario = usuario.Nombre,
-                            Direccion = envioSafe.TransportistaDestino?.Direccion,
-                            CodigoViaje = envioSafe.CodigoViaje,
-                            Observacion = $"{resp.Codigo}. Tel: {telefono ?? "N/A"}",
+                            Direccion = envio.DireccionDestino,
+                            CodigoViaje = envio.CodigoViaje,
+                            Observacion = $"{resp.Codigo}. Tel: {guia.Telefono ?? "N/A"}",
                             Estado = null
                         });
-
                     }
                     else
                     {
                         huboErrores = true;
                         guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
 
-                        // await RegistrarAuditoriaGuiaAsync(context, envioSafe, guia, usuario, telefono, (int)eEnviosEstados.ConError, $"Logictracker ERROR {resp.Codigo}: {resp.Mensaje}");
-
                         auditorias.Add(new EnvioAudit
                         {
-                            Envio = envioSafe.Numero,
+                            Envio = envio.NumeroEnvio,
                             EstadoId = (int)eEnviosEstados.ConError,
                             Fecha = DateTime.Now,
-                            Guia = guia.Numero,
+                            Guia = guia.NumeroGuia,
                             Usuario = usuario.Nombre,
-                            Direccion = envioSafe.TransportistaDestino?.Direccion,
-                            CodigoViaje = envioSafe.CodigoViaje,
-                            Observacion = $"Logictracker ERROR {resp.Codigo}: {resp.Mensaje}",
+                            Direccion = envio.DireccionDestino,
+                            CodigoViaje = envio.CodigoViaje,
+                            Observacion = $"Logictracker ERROR {resp.Codigo}: {resp.Mensaje}. Tel: {guia.Telefono ?? "N/A"}",
                             Estado = null
                         });
 
-                        Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envioSafe.Numero} Guia: {guia.Numero}");
+                        Error.WriteLog($"ERROR {resp.Codigo} - {resp.Mensaje} Envio: {envio.NumeroEnvio} Guia: {guia.NumeroGuia}");
                     }
 
-
-                    // avance del proceso 
                     indexGuia++;
 
                     if (indexGuia == 1 || indexGuia % 10 == 0 || indexGuia == totalGuias)
@@ -1058,53 +1014,63 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
                         await _notificationHubContext.Clients.Group("Notificacion")
                             .SendAsync("ReceiveNotificacion", new NotificacionDTO
                             {
-                                Mensaje = $"Procesando guías {indexGuia}/{totalGuias} del envío {envioSafe.Numero}...",
+                                Mensaje = $"Procesando guías {indexGuia}/{totalGuias} del envío {envio.NumeroEnvio}.",
                                 Usuario = usuario.Nombre,
                                 TipoMensaje = eTipoMensaje.Ok
                             });
                     }
-
-
-
                 }
                 catch (Exception exGuia)
                 {
                     huboErrores = true;
                     guiaToBBDD.EstadoId = (int)eEnviosEstados.ConError;
 
-                    await RegistrarAuditoriaGuiaAsync(context, envioSafe, guia, usuario, telefono, (int)eEnviosEstados.ConError, $"EXCEPCION LT: {exGuia.Message}");
+                    auditorias.Add(new EnvioAudit
+                    {
+                        Envio = envio.NumeroEnvio,
+                        EstadoId = (int)eEnviosEstados.ConError,
+                        Fecha = DateTime.Now,
+                        Guia = guia.NumeroGuia,
+                        Usuario = usuario.Nombre,
+                        Direccion = envio.DireccionDestino,
+                        CodigoViaje = envio.CodigoViaje,
+                        Observacion = $"EXCEPCION LT: {exGuia.Message}. Tel: {guia.Telefono ?? "N/A"}",
+                        Estado = null
+                    });
 
-
-
-                    Error.WriteLog($"ERROR EXCEPCION LT Envio: {envioSafe.Numero} Guia: {guia.Numero} - {exGuia.Message}");
+                    Error.WriteLog($"ERROR EXCEPCION LT Envio: {envio.NumeroEnvio} Guia: {guia.NumeroGuia} - {exGuia.Message}");
                 }
 
                 if (guiaExistente == null)
                 {
-                    //  Revalidación contra DB (evita duplicados por múltiples ejecuciones)
-                    var existe = envioSafe.Id > 0 && await context.EnviosGuias
-                        .AnyAsync(x => x.EnvioId == envioSafe.Id && x.Numero == guia.Numero);
+                    var existe = envio.EnvioId > 0 && await context.EnviosGuias
+                        .AnyAsync(x => x.EnvioId == envio.EnvioId && x.Numero == guia.NumeroGuia);
 
                     if (!existe)
                     {
                         await context.EnviosGuias.AddAsync(guiaToBBDD);
-                        guiasPersistidas[guia.Numero] = guiaToBBDD;
+                        guiasPersistidas[guia.NumeroGuia] = guiaToBBDD;
                     }
                 }
             }
 
-
-            if (envioSafe.Usuario == null)
+            var envioDb = await context.Envios.FirstOrDefaultAsync(x => x.Id == envio.EnvioId);
+            if (envioDb != null)
             {
-                envioSafe.UsuarioId = usuario.Id;
+                envioDb.EstadoId = huboErrores
+                    ? (int)eEnviosEstados.ConError
+                    : (int)eEnviosEstados.Correcto;
+
+                if (envioDb.UsuarioId == 0)
+                    envioDb.UsuarioId = usuario.Id;
             }
-            await ActualizarEstadoEnvioAsync(context, envioSafe, usuario, huboErrores);
+
             await context.SaveChangesAsync();
 
-            await _envioAuditService.AuditarEnviosAsync(auditorias);
 
-
-            return MessageDTO.Ok("Envío sincronizado con éxito.");
+            return huboErrores
+                    ? MessageDTO.Warning("Envío sincronizado con observaciones o errores.")
+                    : MessageDTO.Ok("Envío sincronizado con éxito.");
         }
         catch (Exception ex)
         {
@@ -1122,78 +1088,139 @@ public class EnvioService(Tracker_DevelContext context, IConfiguration configura
 
 
 
-
-
-    private async Task RegistrarAuditoriaGuiaAsync(
-    Tracker_DevelContext context,
-    Envio envio,
-    GuiaDTO guia,
-    UsuarioDTO usuario,
-    string? telefono,
-    int estadoId,
-    string resultado)
+    private static DistribucionConEntidadesWs ConstruirRequestLogicTracker(
+    EnvioPreparadoDTO envio,
+    WSSettingDTO wsSetting,
+    string prefijoTest)
     {
-        var telefonoUsado = string.IsNullOrWhiteSpace(telefono) ? "N/A" : telefono;
-
-        var observacion = $"{resultado}. Tel: {telefonoUsado}. CodigoViaje: {envio.CodigoViaje}";
-
-        var envioAudit = new EnvioAudit
+        var request = new DistribucionConEntidadesWs
         {
-            Envio = envio.Numero,
-            EstadoId = estadoId,
-            Fecha = DateTime.Now,
-            Guia = guia.Numero,
-            Usuario = usuario.Nombre,
-            Direccion = envio.TransportistaDestino?.Direccion,
-            CodigoViaje = envio.CodigoViaje,
-            Observacion = observacion
+            Empresa = wsSetting.Empresa,
+            BaseOperativa = wsSetting.BaseOperativa,
+            FechaInicio = envio.FechaInicio,
+            FechaTurno = envio.FechaTurno,
+            CodigoViaje = envio.CodigoViaje.ToString("N")
         };
 
-        await _envioAuditService.AuditarEnvioAsync(envioAudit);
+        if (envio.TransportistaDestino == null)
+        {
+            request.Transportista = new TransportistaWs
+            {
+                Codigo = envio.Transportista?.Codigo != null
+                    ? string.Concat(prefijoTest, envio.Transportista.Codigo.ToString())
+                    : "0",
+                Descripcion = envio.Transportista?.Nombre != null
+                    ? string.Concat(prefijoTest, envio.Transportista.Nombre)
+                    : string.Empty,
+                Coordenadas = envio.Transportista?.Coordenadas
+            };
+        }
+        else
+        {
+            request.Transportista = new TransportistaWs
+            {
+                Codigo = envio.TransportistaDestino.Codigo != null
+                    ? string.Concat(prefijoTest, envio.TransportistaDestino.Codigo.ToString())
+                    : "0",
+                Descripcion = string.Concat(prefijoTest, envio.TransportistaDestino.Nombre ?? string.Empty),
+                Coordenadas = envio.TransportistaDestino.Coordenadas
+            };
+        }
+
+        request.Chofer = new ChoferWs
+        {
+            Descripcion = string.Concat(prefijoTest, envio.Chofer?.ApellidoNombre ?? string.Empty),
+            Legajo = envio.Chofer?.Legajo ?? string.Empty,
+            Telefono = envio.Chofer?.Telefono ?? string.Empty
+        };
+
+        request.Vehiculo = new VehiculoWs
+        {
+            Patente = envio.Vehiculo?.Patente ?? string.Empty,
+            TipoVehiculo = new TipoVehiculoWs
+            {
+                Codigo = envio.Vehiculo?.Tipo?.Codigo ?? string.Empty,
+                Descripcion = envio.Vehiculo?.Tipo?.Descripcion ?? string.Empty
+            }
+        };
+
+        return request;
     }
 
-    private readonly record struct TelefonoGuiaAuditInfo(
-    string? Telefono,
-    string Estado,
-    string? AfiliadoNombre,
-    long? AfiliadoId
-);
-
-    private readonly record struct TelefonoClienteItem(
-    long Afiliado,
-    string? Telefono,
-    string ListaPrecio,
-    string? AfiliadoNombre,
-    string? OrigenTelefono)
+    private async Task<GenericResponse> EnviarRequestLogicTrackerAsync(
+        CrearDistribucionConEntidadesSoapClient? client,
+        DistribucionConEntidadesWs request,
+        long numeroGuia,
+        SoapLoggingOptions logCfg,
+        string url)
     {
-        public bool EsPrincipal =>
-            !string.IsNullOrWhiteSpace(OrigenTelefono) &&
-            OrigenTelefono.Contains("PRINCIPAL", StringComparison.OrdinalIgnoreCase);
+        if (client != null && client.State == System.ServiceModel.CommunicationState.Faulted)
+        {
+            client.Abort();
+
+            client = new CrearDistribucionConEntidadesSoapClient(
+                CrearDistribucionConEntidadesSoapClient.EndpointConfiguration.CrearDistribucionConEntidadesSoap,
+                url);
+
+            if (logCfg.Enabled && !client.Endpoint.EndpointBehaviors.OfType<SoapLoggingBehavior>().Any())
+            {
+                client.Endpoint.EndpointBehaviors.Add(
+                    new SoapLoggingBehavior(_logger, logCfg.ToFile, logCfg.Path, logCfg.SimularSoap));
+            }
+        }
+
+        if (client == null)
+            return new GenericResponse { Codigo = 200 };
+
+        if (logCfg.SimularSoap)
+        {
+            using (SoapLogContext.UseGuia(numeroGuia.ToString()))
+            {
+                try
+                {
+                    await client.CreateDistribucionConEntidadesAsync(request);
+                }
+                catch (Exception ex)
+                {
+                    Error.WriteLog($"SIMULACION SOAP ERROR (ignorado): {ex.Message}");
+                }
+            }
+
+            return new GenericResponse { Codigo = 200 };
+        }
+
+        if (logCfg.Enabled && logCfg.ToFile)
+        {
+            using (SoapLogContext.UseGuia(numeroGuia.ToString()))
+            {
+                var result = await client.CreateDistribucionConEntidadesAsync(request);
+                return result?.Body?.CreateDistribucionConEntidadesResult
+                       ?? new GenericResponse { Codigo = 500, Mensaje = "Respuesta nula de LT" };
+            }
+        }
+
+        {
+            var result = await client.CreateDistribucionConEntidadesAsync(request);
+            return result?.Body?.CreateDistribucionConEntidadesResult
+                   ?? new GenericResponse { Codigo = 500, Mensaje = "Respuesta nula de LT" };
+        }
     }
 
-
-    private async Task ActualizarEstadoEnvioAsync(
-     Tracker_DevelContext context,
-     Envio envio,
-     UsuarioDTO usuario,
-     bool huboErrores)
+    private async Task<MessageDTO> FinalizarAuditoriasYRespuestaAsync(
+    List<EnvioAudit> auditorias,
+    UsuarioDTO usuario,
+    bool huboErrores)
     {
-        var envioDb = await context.Envios
-            .FirstOrDefaultAsync(x => x.Id == envio.Id);
+        if (auditorias.Count > 0)
+        {
+            await _envioAuditService.AuditarEnviosAsync(auditorias);
+            auditorias.Clear();
+        }
 
-        if (envioDb == null)
-            return;
-
-        envioDb.EstadoId = huboErrores
-            ? (int)eEnviosEstados.ConError
-            : (int)eEnviosEstados.Correcto;
-
-        envioDb.FechaUltimoMov = DateTime.Now;
-        envioDb.UsuarioUltimoMovId = usuario.Id;
-
-        if (envioDb.UsuarioId == 0)
-            envioDb.UsuarioId = usuario.Id;
-
-
+        return huboErrores
+            ? MessageDTO.Warning("Envío sincronizado con observaciones o errores.")
+            : MessageDTO.Ok("Envío sincronizado con éxito.");
     }
+
+
 }
