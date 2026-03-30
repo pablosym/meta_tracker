@@ -1,4 +1,6 @@
-﻿namespace Tracker.DTOs;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Tracker.DTOs;
 
 public class ArticuloDTO
 {
@@ -25,5 +27,8 @@ public class ArticuloDTO
 
     public Int64 NumeroGuia { get; set; }
     public int ClienteCodigo { get; set; }
+
+    [NotMapped]
+    public string? AfiliadoNombre { get; set; }
 
 }

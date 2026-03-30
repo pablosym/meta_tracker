@@ -38,5 +38,8 @@ public partial class Envio
     public virtual vwTransportista? Transportista { get; set; }
 
     public virtual HashSet<EnvioGuia> Guias { get; set; } = [];
-    
+
+    [NotMapped]
+    public string? TelefonoGrupo { get; set; }
+
 }

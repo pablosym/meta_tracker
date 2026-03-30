@@ -296,8 +296,7 @@ $(document).ready(function () {
                         }
 
                         return `<i class="fas fa-phone-alt text-primary mr-1"></i>
-                ${row.telefono}
-                <span class="badge ${badgeClass} ml-2">${row.telefonoOrigen}</span>`;
+                                <b>${row.telefono}</b> ${row.afiliadoNombre} <span class="badge ${badgeClass} ml-2">${row.telefonoOrigen}</span>`;
                     }
                 },
 

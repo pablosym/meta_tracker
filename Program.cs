@@ -94,6 +94,9 @@ builder.Services.AddDbContext<Tracker_DevelContext>(options =>
     )
 );
 
+
+builder.Services.AddDbContextFactory<Tracker_DevelContext>(options =>    options.UseSqlServer(connectionString));
+
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
 

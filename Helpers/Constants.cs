@@ -34,6 +34,9 @@ public class Constants
 
     public enum eEnviosEstados
     {
+        [Description("Con Advertencia")]
+        ConAdvertencias = 10,
+
         [Description("Pendiente")]
         Pendiente = 11,
 
@@ -42,6 +45,8 @@ public class Constants
 
         [Description("Con Error")]
         ConError = 13,
+
+        
     }
 
 

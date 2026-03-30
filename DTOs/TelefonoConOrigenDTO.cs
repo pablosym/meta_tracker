@@ -9,4 +9,7 @@ public class TelefonoConOrigenDTO
     public eTelefonoTablaOrigen Origen { get; set; }
 
     public string OrigenDescripcion => Origen.GetDescription();
+
+    public string? AfiliadoNombre { get; set; }  
+    public long? AfiliadoId { get; set; }        
 }

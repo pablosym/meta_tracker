@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Tracker.DTOs;
+using Tracker.Helpers;
 using Tracker.Models;
 using static Tracker.Helpers.Constants;
 
@@ -7,46 +8,92 @@ namespace Tracker.Services;
 
 public interface IEnvioAuditService
 {
-    Task AuditarEnvioAsync(Tracker_DevelContext context, EnvioAudit envioAudit);
+    Task AuditarEnvioAsync(EnvioAudit envioAudit);
 
     Task<(IEnumerable<EnvioAuditDTO>, int RecordsTotal)> ObtenerAuditoriaEnvioAsync(FiltroAuditoriaDTO filtro);
+
+    Task AuditarEnviosAsync(List<EnvioAudit> auditorias);
 }
 
-
-public class EnvioAuditService(IConfiguration configuration, Tracker_DevelContext context) : IEnvioAuditService
+public class EnvioAuditService : IEnvioAuditService
 {
+    private readonly IConfiguration _configuration;
+    private readonly IDbContextFactory<Tracker_DevelContext> _contextFactory;
+    private readonly Tracker_DevelContext _context;
+
+    public EnvioAuditService(
+        IConfiguration configuration,
+        IDbContextFactory<Tracker_DevelContext> contextFactory,
+        Tracker_DevelContext context)
+    {
+        _configuration = configuration;
+        _contextFactory = contextFactory;
+        _context = context;
+    }
+
+
+    public async Task AuditarEnviosAsync(List<EnvioAudit> auditorias)
+    {
+        try
+        {
+            if (auditorias == null || auditorias.Count == 0)
+                return;
+
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            foreach (var a in auditorias)
+            {
+                // 🔥 evita tracking de navegación
+                a.Estado = null;
+                a.Id = 0;
+            }
+
+            await context.EnviosAudit.AddRangeAsync(auditorias);
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error.WriteLog($"ERROR AUDITORIA BULK: {ex.Message}");
+        }
+    }
+
+
     public async Task AuditarEnvioAsync(EnvioAudit envioAudit)
     {
-        await AuditarEnvioAsync(context, envioAudit);
-    }
-    public async Task AuditarEnvioAsync(Tracker_DevelContext context, EnvioAudit envioAudit)
-    {
-        var auditSetting = configuration.GetSection("AuditarEnvios").Get<AuditSettingDTO>();
-
-        if (auditSetting != null)
+        try
         {
-            if (!auditSetting.SoloErrores || envioAudit.EstadoId == (int)eEnviosEstados.ConError)
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            var auditSetting = _configuration.GetSection("AuditarEnvios").Get<AuditSettingDTO>();
+
+            if (auditSetting != null)
+            {
+                if (!auditSetting.SoloErrores || envioAudit.EstadoId == (int)eEnviosEstados.ConError)
+                {
+                    context.EnviosAudit.Add(envioAudit);
+                }
+
+                await context.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM EnviosAudit WHERE Fecha <= GETDATE() - {0}",
+                    auditSetting.LimpiarAlosDias);
+            }
+            else
             {
                 context.EnviosAudit.Add(envioAudit);
             }
 
-            await context.Database.ExecuteSqlRawAsync("DELETE FROM EnviosAudit WHERE Fecha <= GETDATE() - {0}", auditSetting.LimpiarAlosDias);
-
+            await context.SaveChangesAsync(); // ✔ aislado
         }
-        else
+        catch (Exception ex)
         {
-            context.EnviosAudit.Add(envioAudit);
+            // ⚠️ nunca romper el flujo principal
+            Error.WriteLog($"ERROR AUDITORIA: {ex.Message}");
         }
-
-        await context.SaveChangesAsync();
     }
-
-
-
 
     public async Task<(IEnumerable<EnvioAuditDTO>, int RecordsTotal)> ObtenerAuditoriaEnvioAsync(FiltroAuditoriaDTO filtro)
     {
-        var query = context.EnviosAudit
+        var query = _context.EnviosAudit
             .Include(i => i.Estado)
             .AsNoTracking()
             .AsQueryable();
@@ -67,9 +114,7 @@ public class EnvioAuditService(IConfiguration configuration, Tracker_DevelContex
             query = query.Where(q => q.Fecha >= desde.Date);
 
         if (DateTime.TryParse(filtro.Hasta, out var hasta))
-        {
             query = query.Where(q => q.Fecha < hasta.Date.AddDays(1));
-        }
 
         if (!string.IsNullOrWhiteSpace(filtro.SearchValue))
         {
@@ -86,7 +131,6 @@ public class EnvioAuditService(IConfiguration configuration, Tracker_DevelContex
 
         var total = await query.CountAsync();
 
-        // Orden dinámico
         bool asc = (filtro.SortDirection?.ToLower() == "asc");
 
         query = filtro.SortColumn?.ToLower() switch
