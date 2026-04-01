@@ -6,6 +6,44 @@ function escapeHtml(texto) {
     return $('<div>').text(texto ?? '').html();
 }
 
+function sanitizarHtmlPermitido(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html ?? '';
+
+    const etiquetasPermitidas = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'SPAN', 'SMALL']);
+    const atributosPermitidos = {
+        SPAN: new Set(['class']),
+        SMALL: new Set(['class'])
+    };
+
+    const nodos = template.content.querySelectorAll('*');
+    nodos.forEach((nodo) => {
+        const tag = nodo.tagName;
+
+        if (!etiquetasPermitidas.has(tag)) {
+            const padre = nodo.parentNode;
+            while (nodo.firstChild) {
+                padre.insertBefore(nodo.firstChild, nodo);
+            }
+            padre.removeChild(nodo);
+            return;
+        }
+
+        [...nodo.attributes].forEach((attr) => {
+            const nombre = attr.name.toLowerCase();
+            const valor = (attr.value || '').toLowerCase();
+            const permitidosTag = atributosPermitidos[tag];
+            const atributoPermitido = permitidosTag && permitidosTag.has(attr.name);
+
+            if (nombre.startsWith('on') || valor.includes('javascript:') || !atributoPermitido) {
+                nodo.removeAttribute(attr.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
+}
+
 function borrarTodasLasNotificaciones() {
     $('#zonaNotificaciones .noti-card').remove();
     ocultarContenedorSiVacio();
@@ -46,7 +84,7 @@ connectionNotificacionHub.on("ReceiveNotificacion", function (notificacion) {
 
     const fechaNotificacion = new Date(notificacion.fecha);
     const fecha = Number.isNaN(fechaNotificacion.getTime()) ? '' : fechaNotificacion.toLocaleString();
-    const mensaje = escapeHtml(notificacion.mensaje);
+    const mensaje = sanitizarHtmlPermitido(notificacion.mensaje);
     const usuario = escapeHtml(notificacion.usuario);
     const tipo = Number(notificacion.tipoMensaje); // 1: info, 2: error, 3: warning
     const id = `noti_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
