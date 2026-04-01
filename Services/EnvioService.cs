@@ -610,8 +610,8 @@ public class EnvioService(Tracker_DevelContext context,
                 : MessageDTO.Ok("Envío sincronizado con éxito."));
     }
 
-
-    private async Task<List<EnvioPreparadoDTO>> PrepararEnviosParaLogicTrackerAsync(
+                                                
+    private async Task<List<EnvioPreparadoDTO>> _PrepararEnviosParaLogicTrackerAsync(
     Tracker_DevelContext context,
     Envio envio,
     UsuarioDTO usuario,
@@ -764,6 +764,170 @@ public class EnvioService(Tracker_DevelContext context,
         }
         return enviosPreparados;
     }
+
+    private async Task<List<EnvioPreparadoDTO>> PrepararEnviosParaLogicTrackerAsync(
+    Tracker_DevelContext context,
+    Envio envio,
+    UsuarioDTO usuario,
+    List<EnvioAudit> auditorias)
+    {
+        long? nroGuia = 0L;
+        var logsSplitTelefonos = new List<TelefonoGuiaLog>();
+
+        var wsSetting = _configuration.GetSection("Servicio").Get<WSSettingDTO>() ?? new WSSettingDTO();
+        var usarSplitPorTelefono = wsSetting.HabilitarSplitPorTelefono;
+
+        if (envio.Guias != null && envio.Guias.Count == 1)
+            nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
+
+        var filtro = new FiltroEnvioDTO
+        {
+            Numero = envio.Numero,
+            GuiaNumero = nroGuia,
+            PageSize = int.MaxValue,
+            Skip = 0
+        };
+
+        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+        {
+            Mensaje = "Buscando Guias",
+            Usuario = usuario.Nombre,
+            TipoMensaje = eTipoMensaje.Ok
+        });
+
+        var guias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
+
+        if (!guias.Any())
+            return [];
+
+        // Se traen todos los artículos de todas las guías del envío en una sola pasada
+        var numerosGuia = guias
+            .Select(g => g.Numero)
+            .Distinct()
+            .ToList();
+
+        var articulos = await ObtenerArticulosPorGuiasInternalAsync(context, numerosGuia, usuario.Nombre);
+
+        if (!articulos.Any())
+        {
+            return
+            [
+                CrearEnvioPreparadoSinArticulos(envio, guias)
+            ];
+        }
+
+        // Detectamos guías con múltiples teléfonos válidos
+        var guiasConMultiplesTelefonos = new HashSet<long>();
+
+        foreach (var guia in guias)
+        {
+            var telefonosGuia = articulos
+                .Where(a => a.NumeroGuia == guia.Numero &&
+                            !string.IsNullOrWhiteSpace(a.Telefono) &&
+                            a.Telefono != "ERROR")
+                .Select(a => a.Telefono!.Trim())
+                .Distinct()
+                .ToList();
+
+            if (telefonosGuia.Count > 1)
+            {
+                guiasConMultiplesTelefonos.Add(guia.Numero);
+
+                Error.WriteLog($"WARN MULTIPLES TELEFONOS EN GUIA - Envio: {envio.Numero} Guia: {guia.Numero} Tels: {string.Join(",", telefonosGuia)}");
+
+                auditorias.Add(new EnvioAudit
+                {
+                    Envio = envio.Numero,
+                    EstadoId = (int)eEnviosEstados.ConAdvertencias,
+                    Fecha = DateTime.Now,
+                    Guia = guia.Numero,
+                    Usuario = usuario.Nombre,
+                    Direccion = envio.TransportistaDestino?.Direccion,
+                    CodigoViaje = envio.CodigoViaje,
+                    Observacion = usarSplitPorTelefono
+                        ? $"GUIA CON MULTIPLES TELEFONOS DETECTADOS: {string.Join(",", telefonosGuia)}"
+                        : $"GUIA CON MULTIPLES TELEFONOS DETECTADOS Y SPLIT DESHABILITADO. SE ENVIARA SIN TELEFONO. Tels: {string.Join(",", telefonosGuia)}",
+                    Estado = null
+                });
+            }
+        }
+
+        var telefonosValidos = articulos
+            .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
+            .Select(a => a.Telefono!.Trim())
+            .Distinct()
+            .ToList();
+
+        // Si el split está deshabilitado, nunca se separa el envío.
+        // Las guías con múltiples teléfonos válidos se envían sin teléfono.
+        if (!usarSplitPorTelefono)
+        {
+            foreach (var art in articulos)
+            {
+                if (guiasConMultiplesTelefonos.Contains(art.NumeroGuia))
+                {
+                    art.Telefono = null;
+                    art.TelefonoOrigen = null;
+                }
+            }
+
+            return
+            [
+                CrearEnvioPreparado(envio, guias, articulos, null)
+            ];
+        }
+
+        // Si no hay split real para hacer, devolvemos un único envío
+        if (telefonosValidos.Count <= 1)
+        {
+            return
+            [
+                CrearEnvioPreparado(envio, guias, articulos, telefonosValidos.FirstOrDefault())
+            ];
+        }
+
+        // Split habilitado: se arma un envío por teléfono
+        var enviosPreparados = new List<EnvioPreparadoDTO>();
+
+        foreach (var telefono in telefonosValidos)
+        {
+            var articulosTelefono = articulos
+                .Where(a => string.Equals(a.Telefono?.Trim(), telefono, StringComparison.Ordinal))
+                .ToList();
+
+            if (!articulosTelefono.Any())
+                continue;
+
+            var guiasNumeroTelefono = articulosTelefono
+                .Select(a => a.NumeroGuia)
+                .Distinct()
+                .ToHashSet();
+
+            var guiasTelefono = guias
+                .Where(g => guiasNumeroTelefono.Contains(g.Numero))
+                .ToList();
+
+            if (!guiasTelefono.Any())
+                continue;
+
+            logsSplitTelefonos.AddRange(CrearAuditoriaSplitTelefonos(articulosTelefono, telefono, usuario.Nombre));
+
+            enviosPreparados.Add(CrearEnvioPreparado(envio, guiasTelefono, articulosTelefono, telefono));
+        }
+
+        if (logsSplitTelefonos.Count > 0)
+        {
+            context.TelefonosGuiasLog.AddRange(logsSplitTelefonos);
+            await context.SaveChangesAsync();
+        }
+
+        return enviosPreparados;
+    }
+
+
+
+
+
 
     private static List<TelefonoGuiaLog> CrearAuditoriaSplitTelefonos(
     List<ArticuloDTO> articulosTelefono,
@@ -924,6 +1088,8 @@ public class EnvioService(Tracker_DevelContext context,
             string url = wsSetting.URL ?? string.Empty;
             string prefijoTest = string.Empty;
             var servicioActivo = wsSetting.Activo;
+
+            
 
             if (wsSetting.EntornoPruebas?.Activo ?? false)
             {
