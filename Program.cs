@@ -85,12 +85,15 @@ builder.Services.ConfigureApplicationCookie(o =>
 builder.Services.AddRazorPages();
 
 var connectionString = builder.Configuration.GetConnectionString("TrackerDbConnectionString");
-var commandTimeoutSeconds = builder.Configuration.GetSection("DatabaseSettings")["CommandTimeoutSeconds"] ?? "30";
+var commandTimeoutRaw = builder.Configuration.GetSection("DatabaseSettings")["CommandTimeoutSeconds"];
+var commandTimeoutSeconds = int.TryParse(commandTimeoutRaw, out var parsedTimeout) && parsedTimeout > 0
+    ? parsedTimeout
+    : 30;
 
 builder.Services.AddDbContext<Tracker_DevelContext>(options =>
     options.UseSqlServer(connectionString, providerOptions =>
         providerOptions.EnableRetryOnFailure()
-            .CommandTimeout(int.Parse(commandTimeoutSeconds))
+            .CommandTimeout(commandTimeoutSeconds)
     )
 );
 
@@ -103,7 +106,6 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers()
     .AddNewtonsoftJson(options => options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore);
 
-builder.Services.AddRazorPages();
 builder.Services.AddAntiforgery(options =>
 {
     options.FormFieldName = "AntiforgeryFieldname";
@@ -156,7 +158,7 @@ app.Use(async (ctx, next) =>
         ctx.Request.Headers.TryGetValue("X-Forwarded-Prefix", out var prefix) &&
         !string.IsNullOrEmpty(prefix))
     {
-        var p = prefix.ToString().TrimEnd('/');
+        var p = NormalizeBasePath(prefix.ToString());
         if (!ctx.Request.PathBase.HasValue && !string.IsNullOrWhiteSpace(p))
         {
             ctx.Request.PathBase = p;
@@ -186,7 +188,7 @@ app.MapControllerRoute(
 
 app.MapHub<NotificacionHub>("/NotificacionHub");
 
-app.UseMiddleware<ErrorHandlerMiddleware>();
+app.UseMiddleware<Tracker.Helpers.ErrorHandlerMiddleware>();
 
 // --- Cultura ---
 System.Threading.Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
