@@ -1,5 +1,11 @@
 ﻿var connectionNotificacionHub = new signalR.HubConnectionBuilder().withUrl((window.appBasePath || "") + "/NotificacionHub").build();
 
+const DURACION_NOTIFICACION_MS = 9000;
+
+function escapeHtml(texto) {
+    return $('<div>').text(texto ?? '').html();
+}
+
 function borrarTodasLasNotificaciones() {
     $('#zonaNotificaciones .noti-card').remove();
     ocultarContenedorSiVacio();
@@ -21,31 +27,43 @@ $(function () {
 
 
 
-    connectionNotificacionHub.start().then(function () {
+connectionNotificacionHub.start()
+    .then(function () {
         console.log("Conexion Exitosa Notificaciones");
+    })
+    .catch(function (err) {
+        console.error("Error al conectar con NotificacionHub:", err);
     });
 
-    connectionNotificacionHub.on("ReceiveNotificacion", function (notificacion) {
-        $(document).trigger('tracker:notificacion', [notificacion]);
+connectionNotificacionHub.onclose(function (err) {
+    if (err) {
+        console.error("Conexion cerrada con error en NotificacionHub:", err);
+    }
+});
 
-        const fecha = new Date(notificacion.fecha).toLocaleString();
-        const mensaje = notificacion.mensaje;
-        const usuario = notificacion.usuario;
-        const tipo = notificacion.tipoMensaje; // 1: info, 2: error, 3: warning
-        const id = `noti_${Date.now()}`;
+connectionNotificacionHub.on("ReceiveNotificacion", function (notificacion) {
+    $(document).trigger('tracker:notificacion', [notificacion]);
 
-        let icono = "fas fa-info-circle";
-        let clase = "info";
+    const fechaNotificacion = new Date(notificacion.fecha);
+    const fecha = Number.isNaN(fechaNotificacion.getTime()) ? '' : fechaNotificacion.toLocaleString();
+    const mensaje = escapeHtml(notificacion.mensaje);
+    const usuario = escapeHtml(notificacion.usuario);
+    const tipo = Number(notificacion.tipoMensaje); // 1: info, 2: error, 3: warning
+    const id = `noti_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const esError = tipo === 2;
 
-        if (tipo === 2) {
-            icono = "fas fa-times-circle";
-            clase = "danger";
-        } else if (tipo === 3) {
-            icono = "fas fa-exclamation-triangle";
-            clase = "warning";
-        }
+    let icono = "fas fa-info-circle";
+    let clase = "info";
 
-        const html = `
+    if (esError) {
+        icono = "fas fa-times-circle";
+        clase = "danger";
+    } else if (tipo === 3) {
+        icono = "fas fa-exclamation-triangle";
+        clase = "warning";
+    }
+
+    const html = `
                 <div class="noti-card ${clase}" id="${id}">
                     <div class="noti-icon"><i class="${icono}"></i></div>
                     <div class="noti-content">
@@ -59,15 +77,16 @@ $(function () {
                 </div>
             `;
 
-        const $zona = $('#zonaNotificaciones');
-        $zona.show();
-        $zona.find('.noti-header').after(html);
+    const $zona = $('#zonaNotificaciones');
+    $zona.show();
+    $zona.find('.noti-header').after(html);
 
+    if (!esError) {
         setTimeout(() => {
             $(`#${id}`).fadeOut(400, function () {
                 $(this).remove();
                 ocultarContenedorSiVacio();
             });
-        }, 9000);
-    })
-
+        }, DURACION_NOTIFICACION_MS);
+    }
+});
