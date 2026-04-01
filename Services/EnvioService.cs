@@ -590,6 +590,43 @@ public class EnvioService(Tracker_DevelContext context,
 
         foreach (var envioPreparado in enviosPreparados)
         {
+
+
+            var validacion = ValidarEnvioPreparadoParaLogicTracker(envioPreparado);
+            if (!validacion.EsValido)
+            {
+                huboErrores = true;
+                ultimoResultado = MessageDTO.Warning("Se omitió la sincronización de un envío por datos incompletos.");
+
+                var detalle = string.Join(" | ", validacion.Errores);
+                foreach (var guia in envioPreparado.Guias)
+                {
+                    auditorias.Add(new EnvioAudit
+                    {
+                        Envio = envioPreparado.NumeroEnvio,
+                        EstadoId = (int)eEnviosEstados.ConError,
+                        Fecha = DateTime.Now,
+                        Guia = guia.NumeroGuia,
+                        Usuario = usuario.Nombre,
+                        Direccion = envioPreparado.DireccionDestino,
+                        CodigoViaje = envioPreparado.CodigoViaje,
+                        Observacion = $"ENVIO OMITIDO POR DATOS INCOMPLETOS: {detalle}",
+                        Estado = null
+                    });
+                }
+
+                await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
+                {
+                    Mensaje = $"<span class='text-red'>No se sincronizó el envío Nº {envioPreparado.NumeroEnvio}: {detalle}</span>",
+                    Usuario = usuario.Nombre,
+                    TipoMensaje = eTipoMensaje.Error
+                });
+
+                Error.WriteLog($"ERROR DATOS INCOMPLETOS LT - Envio: {envioPreparado.NumeroEnvio} - {detalle}");
+                continue;
+            }
+
+
             ultimoResultado = await EnviarEnvioPreparadoALogicTrackerAsync(context, envioPreparado, usuario, auditorias);
 
             if (ultimoResultado == null || !ultimoResultado.IsOk)
@@ -611,160 +648,7 @@ public class EnvioService(Tracker_DevelContext context,
     }
 
                                                 
-    private async Task<List<EnvioPreparadoDTO>> _PrepararEnviosParaLogicTrackerAsync(
-    Tracker_DevelContext context,
-    Envio envio,
-    UsuarioDTO usuario,
-    List<EnvioAudit> auditorias)
-    {
-        long? nroGuia = 0L;
-        var logsSplitTelefonos = new List<TelefonoGuiaLog>();
-
-        if (envio.Guias != null && envio.Guias.Count == 1)
-            nroGuia = envio.Guias.FirstOrDefault()?.Numero ?? 0L;
-
-        var filtro = new FiltroEnvioDTO
-        {
-            Numero = envio.Numero,
-            GuiaNumero = nroGuia,
-            PageSize = int.MaxValue,
-            Skip = 0
-        };
-
-        await _notificationHubContext.Clients.Group("Notificacion").SendAsync("ReceiveNotificacion", new NotificacionDTO
-        {
-            Mensaje = "Buscando Guias",
-            Usuario = usuario.Nombre,
-            TipoMensaje = eTipoMensaje.Ok
-        });
-
-        var guias = (await ObtenerGuiasInternalAsync(context, filtro, usuario.Nombre)).ToList();
-
-        if (!guias.Any())
-            return [];
-
-        // Se traen los artículos una sola vez para todas las guías del envío
-        var numerosGuia = guias
-            .Select(g => g.Numero)
-            .Distinct()
-            .ToList();
-
-        var articulos = await ObtenerArticulosPorGuiasInternalAsync(context, numerosGuia, usuario.Nombre);
-
-        if (!articulos.Any())
-        {
-            return
-            [
-                CrearEnvioPreparadoSinArticulos(envio, guias)
-            ];
-        }
-
-        foreach (var guia in guias)
-        {
-            var articulosGuia = articulos
-                .Where(a => a.NumeroGuia == guia.Numero)
-                .ToList();
-
-            var telefonosGuia = articulosGuia
-                .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
-                .Select(a => a.Telefono!.Trim())
-                .Distinct()
-                .ToList();
-
-            if (telefonosGuia.Count > 1)
-            {
-                Error.WriteLog($"WARN MULTIPLES TELEFONOS EN GUIA - Envio: {envio.Numero} Guia: {guia.Numero} Tels: {string.Join(",", telefonosGuia)}");
-
-                auditorias.Add(new EnvioAudit
-                {
-                    Envio = envio.Numero,
-                    EstadoId = (int)eEnviosEstados.ConAdvertencias,
-                    Fecha = DateTime.Now,
-                    Guia = guia.Numero,
-                    Usuario = usuario.Nombre,
-                    Direccion = envio.TransportistaDestino?.Direccion,
-                    CodigoViaje = envio.CodigoViaje,
-                    Observacion = $"GUIA CON MULTIPLES TELEFONOS DETECTADOS: {string.Join(",", telefonosGuia)}",
-                    Estado = null
-                });
-            }
-        }
-
-        var telefonosValidos = articulos
-            .Where(a => !string.IsNullOrWhiteSpace(a.Telefono) && a.Telefono != "ERROR")
-            .Select(a => a.Telefono!.Trim())
-            .Distinct()
-            .ToList();
-
-        if (telefonosValidos.Count <= 1)
-        {
-            return
-            [
-                CrearEnvioPreparado(envio, guias, articulos, telefonosValidos.FirstOrDefault())
-            ];
-        }
-
-        var enviosPreparados = new List<EnvioPreparadoDTO>();
-        var splitsAuditados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var telefono in telefonosValidos)
-        {
-            var articulosTelefono = articulos
-                .Where(a => string.Equals(a.Telefono?.Trim(), telefono, StringComparison.Ordinal))
-                .ToList();
-
-            if (!articulosTelefono.Any())
-                continue;
-
-            var guiasNumeroTelefono = articulosTelefono
-                .Select(a => a.NumeroGuia)
-                .Distinct()
-                .ToHashSet();
-
-            var guiasTelefono = guias
-                .Where(g => guiasNumeroTelefono.Contains(g.Numero))
-                .ToList();
-
-            if (!guiasTelefono.Any())
-                continue;
-            
-            
-
-            foreach (var guiaTelefono in guiasTelefono)
-            {
-                var claveSplit = $"{envio.Numero}|{guiaTelefono.Numero}|{telefono}";
-
-                if (!splitsAuditados.Add(claveSplit))
-                    continue;
-
-                //auditorias.Add(new EnvioAudit
-                //{
-                //    Envio = envio.Numero,
-                //    EstadoId = (int)eEnviosEstados.ConAdvertencias,
-                //    Fecha = DateTime.Now,
-                //    Guia = guiaTelefono.Numero,
-                //    Usuario = usuario.Nombre,
-                //    Direccion = envio.TransportistaDestino?.Direccion,
-                //    CodigoViaje = envio.CodigoViaje,
-                //    Observacion = $"SPLIT POR TELEFONO - Guia: {guiaTelefono.Numero} - Tel: {telefono}",
-                //    Estado = null
-                //});
-            }
-
-            logsSplitTelefonos.AddRange(CrearAuditoriaSplitTelefonos(articulosTelefono, telefono, usuario.Nombre));
-
-
-            enviosPreparados.Add(CrearEnvioPreparado(envio, guiasTelefono, articulosTelefono, telefono));
-        }
-
-        if (logsSplitTelefonos.Count > 0)
-        {
-            context.TelefonosGuiasLog.AddRange(logsSplitTelefonos);
-            await context.SaveChangesAsync();
-        }
-        return enviosPreparados;
-    }
-
+   
     private async Task<List<EnvioPreparadoDTO>> PrepararEnviosParaLogicTrackerAsync(
     Tracker_DevelContext context,
     Envio envio,
@@ -1410,6 +1294,30 @@ public class EnvioService(Tracker_DevelContext context,
         }
     }
 
-   
+
+    private static (bool EsValido, List<string> Errores) ValidarEnvioPreparadoParaLogicTracker(EnvioPreparadoDTO envio)
+    {
+        var errores = new List<string>();
+
+        if (envio.EnvioId  <= 0)
+            errores.Add("Envio faltante");
+
+        if (envio.Chofer == null || envio.Chofer.Id <= 0)
+            errores.Add("Chofer faltante");
+
+        if (envio.Transportista == null || envio.Transportista.Codigo <= 0)
+            errores.Add("Transportista faltante");
+
+        if (envio.Vehiculo == null || envio.Vehiculo.Id <= 0)
+            errores.Add("Vehículo faltante");
+
+        if (envio.Guias == null || envio.Guias.Count == 0)
+            errores.Add("Clientes/guías faltantes");
+        else if (envio.Guias.Any(g => g.Remitos == null || g.Remitos.Count == 0))
+            errores.Add("Remitos faltantes");
+
+        return (errores.Count == 0, errores);
+    }
+
 
 }
